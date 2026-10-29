@@ -1,8 +1,8 @@
 /**
  * 子命令分发：把解析结果 + 项目上下文路由到对应实现，并把失败统一成三段式。
  *
- * 分发是「工具成不成功」的唯一判定位（见 docs/SPEC.md R5）：`new` / `validate` 已接
- * `src/cli/new.ts` / `src/cli/validate.ts`，其余子命令由 B4/B5 接入，当前回「尚未实现」三段式，
+ * 分发是「工具成不成功」的唯一判定位（见 docs/SPEC.md R5）：`new` / `validate` / `eval` /
+ * `optimize` 已接真实现，`package` / `install` 由 B5 接入（当前回「尚未实现」三段式），
  * 绝不抛异常。
  *
  * 路径口径（docs/SPEC.md R6.2-J2）：项目目录只来自调用方传入的 `directory`，退一步用
@@ -11,7 +11,9 @@
  */
 
 import { log } from "../lib/logger.js";
+import { evalHandler } from "./eval.js";
 import { formatError } from "./errors.js";
+import { optimizeHandler } from "./optimize.js";
 import { HELP_TEXT, SUBCOMMANDS, isSubcommand, type Subcommand } from "./help.js";
 import { newHandler } from "./new.js";
 import { parseArgs } from "./parse-args.js";
@@ -73,8 +75,8 @@ const installPendingHandler: SubcommandHandler = (): DispatchResult => {
 const HANDLERS: Record<Exclude<Subcommand, "help">, SubcommandHandler> = {
   new: newHandler,
   validate: validateHandler,
-  eval: pendingHandler,
-  optimize: pendingHandler,
+  eval: evalHandler,
+  optimize: optimizeHandler,
   package: pendingHandler,
   install: installPendingHandler,
 };
@@ -88,7 +90,10 @@ const HANDLERS: Record<Exclude<Subcommand, "help">, SubcommandHandler> = {
  * @param ctx 项目上下文（来自 `ToolContext`）
  * @returns 成功标志与完整输出文本
  */
-export function runCommand(parsed: ParsedArgs, ctx: DispatchContext): DispatchResult {
+export function runCommand(
+  parsed: ParsedArgs,
+  ctx: DispatchContext,
+): DispatchResult | Promise<DispatchResult> {
   const { command } = parsed;
   log.log("DEBUG", `dispatch ${command === "" ? "(空)" : command}`);
 
@@ -116,20 +121,33 @@ export function runCommand(parsed: ParsedArgs, ctx: DispatchContext): DispatchRe
   }
 
   // TODO(B3): SKILL_ZH_DEBUG 输出原始错误（当前无抛点，见 docs/ROADMAP.md B2 调试开关一条）。
+  const fail = (error: unknown): DispatchResult => {
+    // handler 是外部逻辑（含 `opencode run` 子进程）：失败一律转三段式，堆栈只进日志。
+    log.error(
+      `子命令 ${command} 执行失败`,
+      error instanceof Error ? error : new Error(String(error)),
+    );
+    return {
+      ok: false,
+      output: formatError(
+        `子命令 ${command} 执行失败`,
+        "先用 skill_zh help 确认参数写法，再重试一次",
+      ),
+    };
+  };
+
   try {
-    return HANDLERS[command]({
+    const outcome = HANDLERS[command]({
       positionals: parsed.positionals,
       flags: parsed.flags,
       projectDir,
       ctx,
     });
+    // 同步 handler（new / validate）保持同步返回；异步 handler（eval / optimize）把
+    // rejection 也收进同一套三段式，避免未捕获的 Promise 抛到工具层。
+    return outcome instanceof Promise ? outcome.catch(fail) : outcome;
   } catch (error) {
-    // handler 是 B3/B4 接进来的外部逻辑：抛错一律转三段式，堆栈只进日志。
-    log.error(`子命令 ${command} 执行失败`, error instanceof Error ? error : new Error(String(error)));
-    return {
-      ok: false,
-      output: formatError(`子命令 ${command} 执行失败`, "先用 skill_zh help 确认参数写法，再重试一次"),
-    };
+    return fail(error);
   }
 }
 
@@ -140,6 +158,6 @@ export function runCommand(parsed: ParsedArgs, ctx: DispatchContext): DispatchRe
  * @param ctx 工具调用带来的项目上下文（`directory` / `worktree`）
  * @returns 回给模型的完整文本（失败时是三段式错误，同样不抛异常）
  */
-export function dispatch(input: string, ctx: DispatchContext): string {
-  return runCommand(parseArgs(input), ctx).output;
+export async function dispatch(input: string, ctx: DispatchContext): Promise<string> {
+  return (await runCommand(parseArgs(input), ctx)).output;
 }

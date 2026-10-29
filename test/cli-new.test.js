@@ -21,10 +21,14 @@ import { parseArgs } from "../dist/cli/parse-args.js";
  */
 function withTempRoot(fn) {
   const root = mkdtempSync(join(tmpdir(), "skill-creator-new-"));
+  const cleanup = () => rmSync(root, { recursive: true, force: true });
   try {
-    return fn(root);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
+    const result = fn(root);
+    // 异步用例（要 await dispatch）的清理必须挂到 Promise 之后，否则会在断言前删目录。
+    return result instanceof Promise ? result.finally(cleanup) : (cleanup(), result);
+  } catch (error) {
+    cleanup();
+    throw error;
   }
 }
 
@@ -38,9 +42,9 @@ function ctxOf(root) {
   return { directory: root, worktree: root };
 }
 
-test("合法技能名生成 SKILL.md 与 references/示例.md，并能被 validate 通过", () => {
-  withTempRoot((root) => {
-    const output = dispatch("new demo-skill --dir .", ctxOf(root));
+test("合法技能名生成 SKILL.md 与 references/示例.md，并能被 validate 通过", async () => {
+  await withTempRoot(async (root) => {
+    const output = await dispatch("new demo-skill --dir .", ctxOf(root));
     const skillDir = join(root, "demo-skill");
     const skillMd = join(skillDir, "SKILL.md");
     const reference = join(skillDir, "references", "示例.md");
@@ -55,7 +59,7 @@ test("合法技能名生成 SKILL.md 与 references/示例.md，并能被 valida
     assert.ok(readFileSync(reference, "utf-8").includes("何时读本文件"), "参考资料未写「何时读本文件」");
 
     // 生成物是自洽的：紧接着跑 validate 必须通过（模板自己不能违反校验规则）。
-    const validated = dispatch(`validate "${skillDir.replaceAll("\\", "/")}"`, ctxOf(root));
+    const validated = await dispatch(`validate "${skillDir.replaceAll("\\", "/")}"`, ctxOf(root));
     assert.ok(validated.includes("：通过"), `新生成的技能未通过校验：${validated}`);
   });
 });
@@ -150,9 +154,9 @@ test("目标目录已存在但为空时直接生成", () => {
   });
 });
 
-test("缺少技能名参数返回三段式并给示例", () => {
-  withTempRoot((root) => {
-    const lines = dispatch("new", ctxOf(root)).split("\n");
+test("缺少技能名参数返回三段式并给示例", async () => {
+  await withTempRoot(async (root) => {
+    const lines = (await dispatch("new", ctxOf(root))).split("\n");
 
     assert.equal(lines.length, 3);
     assert.equal(lines[0], "错误：缺少参数 <技能名>");

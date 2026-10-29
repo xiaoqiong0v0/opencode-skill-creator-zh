@@ -24,7 +24,10 @@ export const SKILL_ZH_TOOL: ToolDefinition = tool({
   execute: async (input, context): Promise<string> => {
     log.tool(TOOL_NAME, { args: input.args });
     try {
-      return dispatch(input.args, { directory: context.directory, worktree: context.worktree });
+      return await dispatch(input.args, {
+        directory: context.directory,
+        worktree: context.worktree,
+      });
     } catch (error) {
       // 工具层兜底：任何异常都转三段式，绝不把堆栈抛给模型（R5）。
       log.error(`${TOOL_NAME} 执行失败`, toLoggableError(error));

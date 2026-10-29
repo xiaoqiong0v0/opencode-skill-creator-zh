@@ -146,9 +146,9 @@ test("缺 SKILL.md：判未通过并给出可照做的补文件改法", () => {
   });
 });
 
-test("缺参返回三段式并给示例", () => {
-  withTempRoot((root) => {
-    const lines = dispatch("validate", ctxOf(root)).split("\n");
+test("缺参返回三段式并给示例", async () => {
+  await withTempRoot(async (root) => {
+    const lines = (await dispatch("validate", ctxOf(root))).split("\n");
 
     assert.equal(lines.length, 3);
     assert.equal(lines[0], "错误：缺少参数 <技能目录>");
@@ -157,9 +157,9 @@ test("缺参返回三段式并给示例", () => {
   });
 });
 
-test("技能目录不存在返回三段式并给改法", () => {
-  withTempRoot((root) => {
-    const lines = dispatch("validate ./skills/missing-skill", ctxOf(root)).split("\n");
+test("技能目录不存在返回三段式并给改法", async () => {
+  await withTempRoot(async (root) => {
+    const lines = (await dispatch("validate ./skills/missing-skill", ctxOf(root))).split("\n");
 
     assert.equal(lines.length, 3);
     assert.equal(lines[0], "错误：技能目录不存在：./skills/missing-skill");
@@ -168,9 +168,9 @@ test("技能目录不存在返回三段式并给改法", () => {
   });
 });
 
-test("目录名不是 kebab-case 时，路径不存在的改法不再建议用这个非法名新建", () => {
-  withTempRoot((root) => {
-    const lines = dispatch("validate ./skills/My_Skill", ctxOf(root)).split("\n");
+test("目录名不是 kebab-case 时，路径不存在的改法不再建议用这个非法名新建", async () => {
+  await withTempRoot(async (root) => {
+    const lines = (await dispatch("validate ./skills/My_Skill", ctxOf(root))).split("\n");
 
     assert.equal(lines.length, 3);
     assert.ok(lines[0].startsWith("错误：技能目录不存在："), lines[0]);

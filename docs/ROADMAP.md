@@ -6,7 +6,7 @@
 
 `.tmp/old/` **不是上游原文**，而是含 2 个 fork 提交的中间态（`69bcb56` 汉化技能、`221bb4e` 中文 CLI 骨架）：`plugin/package.json` 已改名、`plugin/skill/` 已汉化、`plugin/single-tool.ts` 已有 CLI 原型；**只有 `plugin/lib/**` 与基线 `d4383924` 一致**。B2/B3 迁 `lib/` 时一律以 `d4383924` 为基线，其余文件只当 fork 中间态参考，不得当作上游原文引用。
 
-状态：B0–B3 已完成（B3 于 2026-10-29 落地并实测，见该节验收）；B4–B6 未开始。
+状态：B0–B4 已完成（B3/B4 于 2026-10-29 落地并实测，见各自「实测结论」）；B5–B6 未开始。
 
 ---
 
@@ -48,7 +48,7 @@
 - **验收方式**：对一个真实技能目录跑通 `new` → `validate`；对故意写坏的 `SKILL.md`（缺 `name` / 描述超长 / 目录名不匹配）逐条给出可照做的改法；同一份含「描述超长」的目录在缺省下只提示、加 `--strict` 后判 `未通过（1 处错误）`（同批问题全部列出，不是三段式）；`new` 覆盖保护生效；`npm test` 全绿。
 - **2026-10-29 实测结论**：`npm run typecheck` 退出码 0；`npm test` 206 例（205 通过、0 失败、1 个既有 skip：`findProjectRoot` 兜底分支在本机不可达），其中新增 `cli-new` 5 例、`cli-validate` 8 例全绿。临时目录手工跑通 `new demo-skill --dir .` → `validate demo-skill --strict`（结论「通过」，description 36 字符）；对 1030 字符 description 的目录，缺省输出「通过 + 1 处提示」、加 `--strict` 输出「未通过（1 处问题）」并定位到 `SKILL.md:3`。可失败性：把 `strict` 判定改成常量 `false` 后 `cli-validate` 立刻 2 例失败，恢复后回到全绿。**遗留**：B2 顺延的 `SKILL_ZH_DEBUG=1` 调试开关未在本批落地，仍待补。
 
-## B4 `eval` / `optimize`
+## B4 `eval` / `optimize`（已完成）
 
 - **内容**：
   - `eval`：接 `runEval`，输出通过率、逐条 query 触发结果、失败用例清单；支持 `--runs`、`--workers`。
@@ -65,9 +65,11 @@
     - J8 提供 `--no-shadow-guard`：关闭自动屏蔽，行为回到「检测到冲突即中止」。
     - J9 **镜像范围固定为方案 C（四项缺一不可）**：合成技能本体 + 项目根 `opencode.json(c)` 及其引用文件（丢了丢 provider / agent / model 与项目指令）+ `.opencode/` 除 `skills` 外全部条目 + `.opencode/skills/` 除被测技能外的兄弟技能；四项之外不放行，方式一律逐条目/逐文件 + 单文件大小上限。
   - **镜像方案已定 C（2026-10-29）**：保留兄弟技能与配置文档镜像，只修掉整目录递归拷贝。决策记录与理由（评测要预测真实竞争、`deny` 已解决同名遮挡、「拷多余」病根在递归拷贝而非镜像语义）见 [design/技能评测隔离问题.md](design/技能评测隔离问题.md)；`tools.md` 的 `eval` 说明同批按 C 写死。坑 F（同名遮挡）与镜像范围正交，方案 C 同样要处理。
-  - **同批产出 `docs/ASYNC.md`**：登记 eval / optimize 的并发交互点——多 worker 并发调用 `opencode run` 的并发上限与配额、共享结果收集容器、单条 query 超时与取消、评测产物落盘的写入顺序与覆盖规则、临时目录清理。写法与门禁见项目文档规范；**本批只在计划里立项，不在当前批次创建空文件**。
-- **涉及文件**：`src/cli/eval.ts`、`src/cli/optimize.ts`、`src/lib/run-eval.ts`、`src/lib/run-loop.ts`、`src/lib/improve-description.ts`、`docs/ASYNC.md`（同批新增）、`test/eval.test.js`、`test/optimize.test.js`。
+  - **同批产出 `docs/ASYNC.md`**：登记 eval / optimize 的并发交互点——多 worker 并发调用 `opencode run` 的并发上限与配额、共享结果收集容器、单条 query 超时与取消、评测产物落盘的写入顺序与覆盖规则、临时目录清理。写法与门禁见项目文档规范；**已在本批创建 [ASYNC.md](ASYNC.md)**。
+- **涉及文件**：`src/cli/eval.ts`、`src/cli/optimize.ts`、`src/cli/eval-common.ts`（共用参数/评测集/报告）、`src/lib/run-eval.ts`、`src/lib/run-loop.ts`、`src/lib/improve-description.ts`、`src/lib/debug.ts`（`SKILL_ZH_DEBUG`）、`docs/ASYNC.md`（同批新增）、`test/lib-run-eval-e2e.test.js`（迁上游 14 条端到端）、`test/lib-run-eval-j.test.js`（J1/J5–J9 + 源码门禁）、`test/cli-eval.test.js`、`test/cli-optimize.test.js`。
 - **验收方式**：对一个真实技能 + 评测集跑通 `eval` 与 `optimize`，输出含通过率与最终 description；`--runs` / `--workers` / `--iterations` 缺值或非法值走三段式；评测产物落盘路径与文档一致；`docs/ASYNC.md` 的每条交互点都能指到具体 `src/` 位置（共享状态 / 保护手段 / 顺序契约 / 位置四要素齐全）；隔离根满足 R6.2——打桩 `symlinkSync` 失败后 `evalRoot` 无 `node_modules/`、`dist/`、`.git/`（J1）；子目录调用评测时路径基准为 `ToolContext.directory`（次选 `worktree`），`src/cli/**` 与 `src/tool.ts` 内 `process.cwd()` 真实调用数 = 0 且不做向上查找（J2）；从 home 下的临时目录调用时**不得**把 home 或 `~/.opencode` 当成项目根（J2，仅独立 CLI 兜底路径适用）；被测与兄弟技能同存时 `evalRoot` 内按内容哈希搜不到被测技能，三类别名均被拒（J3）；成功 / 抛错 / 取消三路径结束后临时根不存在（J4）；`SKILL_ZH_DEBUG=1` 的镜像清单与磁盘内容一致（J5）；探测目录放同名全局技能后，`evalRoot/.opencode/opencode.json` 出现 `permission.skill.<基础名> = "deny"` 且探测目录哈希不变（J6）；把该配置写入打桩成失败时以三段式中止、改法含实际路径与可复制命令（J7）；加 `--no-shadow-guard` 时不写 deny 且同名存在时中止（J8）；`evalRoot` 的顶层条目 = 合成技能 + 根配置文档及引用 + `.opencode/` 非 skills 条目 + 兄弟技能，无四项之外的内容且被测技能不在（J9）；`npm test` 全绿。
+
+- **2026-10-29 实测结论**：`npm run typecheck` 退出码 0；`npm test` **256 例全绿（256 通过 / 0 失败 / 0 skip；本机支持符号链接，符号链接相关用例未 skip）**，其中新增 `lib-run-eval-e2e` 17 例（迁上游未迁的端到端 14 例 + J4 清理 3 例；假 `opencode` 放 PATH，无真实模型）、`cli-eval` 7 例、`cli-optimize` 5 例、`lib-run-eval-j` 12 例（J1/J5/J6/J7/J8/J9 + J1/J2 源码门禁 + 入口符号链接 / jsonc / 枚举不可用 / 整轮中止）。源码门禁 `cpSync(.*recursive` 在 `src/` 命中 0（`cpSync` 已整体移除）。手工用假 `opencode` 跑 `skill_zh eval ./skills/api-doc-writer --runs 1 --workers 1`：输出通过率 0.67（2/3）、逐条结果、失败用例、`镜像：3 个条目，链接镜像（跳过 0 项）` 与报告路径，未产生费用。可失败性：注释掉 `applySkillDeny` 后 `J6 命中同名技能时在隔离根写 deny` 立即变红（1 失败），还原后 1/1 通过。**遗留**：B2/B3 顺延的 `SKILL_ZH_DEBUG=1` 已在 B4 落地（镜像清单 + 跳过原因），但「原始异常堆栈」只进日志、不回给模型（保持 R5 三段式）。
 
 ## B5 `package` 与技能入包
 

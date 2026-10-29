@@ -14,8 +14,6 @@ import { parseArgs } from "../dist/cli/parse-args.js";
 
 /** 尚未接实现的子命令 → 期望的首行（`new` / `validate` 已在 B3 接真实现，见 cli-new/cli-validate）。 */
 const PENDING_SUBCOMMANDS = {
-  eval: "错误：子命令尚未实现",
-  optimize: "错误：子命令尚未实现",
   package: "错误：子命令尚未实现",
   install: "错误：install 子命令尚未实现",
 };
@@ -32,14 +30,14 @@ test("formatError 输出恰好三行且以「可用：skill_zh help」结尾", (
   assert.equal(lines[2], "可用：skill_zh help");
 });
 
-test("空参数与 help 都返回完整帮助", () => {
-  assert.equal(dispatch("", CTX), HELP_TEXT);
-  assert.equal(dispatch("help", CTX), HELP_TEXT);
-  assert.equal(dispatch("   ", CTX), HELP_TEXT);
+test("空参数与 help 都返回完整帮助", async () => {
+  assert.equal(await dispatch("", CTX), HELP_TEXT);
+  assert.equal(await dispatch("help", CTX), HELP_TEXT);
+  assert.equal(await dispatch("   ", CTX), HELP_TEXT);
 });
 
-test("未知子命令返回三段式并列出可用子命令", () => {
-  const lines = dispatch("validat ./skills/demo", CTX).split("\n");
+test("未知子命令返回三段式并列出可用子命令", async () => {
+  const lines = (await dispatch("validat ./skills/demo", CTX)).split("\n");
 
   assert.equal(lines.length, 3);
   assert.equal(lines[0], '错误：未知子命令 "validat"');
@@ -47,9 +45,9 @@ test("未知子命令返回三段式并列出可用子命令", () => {
   assert.equal(lines[2], "可用：skill_zh help");
 });
 
-test("未实现子命令返回三段式且不外泄堆栈与模块路径", () => {
+test("未实现子命令返回三段式且不外泄堆栈与模块路径", async () => {
   for (const [command, expectedFirstLine] of Object.entries(PENDING_SUBCOMMANDS)) {
-    const output = dispatch(`${command} ./skills/demo`, CTX);
+    const output = await dispatch(`${command} ./skills/demo`, CTX);
     const lines = output.split("\n");
 
     assert.equal(lines.length, 3, `${command}：输出不是三段式`);

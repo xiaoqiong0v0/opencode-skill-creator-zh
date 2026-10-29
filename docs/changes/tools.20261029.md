@@ -55,3 +55,19 @@
 **现在**：`validate` 一次报全（未知键、未引号非法取值、缺 name/description、name 规范、description 长度、兼容性超长各自成条），错误与提示分开计数并**一并输出**（`未通过（2 处错误，1 处提示）` / `[错误 n]` / `[提示 n]`），补一份「同时有错误与提示」的示例；路径不存在时，目录名不是 kebab-case 就改给「先重命名目录，或 `skill_zh new my-skill`」；「调试」行改为 `SKILL_ZH_DEBUG=1` 尚未实现、现有入口是 `SKILL_ZH_LOG_DISABLE=1` 与 `plugin-logger.jsonc` 的 `enabled`；示例可用列表补 `install`；`--force` 改为两个被覆盖文件各留 `.bak` 并在输出点名。
 
 **为什么**：只报第一条会让用户「修一条、跑一次」，且失败时看不到提示等于提示白写；文档写着一个不存在的调试开关，会让排查的人白试一轮；可用列表漏 `install` 会让用户以为命令不存在。
+
+## eval / optimize 两节按实际实现重写（同日第十批）
+
+**原来**：eval 只列 `<技能目录>` / `--runs` / `--workers` / `--no-shadow-guard`，默认值写「见实现常量」，评测集默认写 `evals/evals.json`；optimize 只列 `<技能目录>` / `--iterations`；没有 `--timeout` / `--model` / `--agent` / `--eval-set` / `--log-dir`，也没有报告落盘说明；通用约定里 `SKILL_ZH_DEBUG=1` 标「尚未实现」。
+
+**现在**：两节按落地实现重写——eval 九个选项全部列出（默认 1/1/120000ms/opencode 默认/build、评测集 `<技能目录>/eval_set.json`、报告目录 `<技能目录>/.evals`）；optimize 八个选项与 6:4 切分、HTML/JSON 产物；补评测集格式、真实输出示例（逐条结果、失败分组、镜像汇总、报告路径）、缺参/评测集缺失/非法参数/deny 写入失败的失败示例；隔离根与 deny 两节按 J1–J9 更新（2 MiB 上限、逐文件降级、`SKILL_ZH_DEBUG=1` 清单、deny 合并与摘链、J7 回退）；通用约定与状态行同步为「B0–B4 完成 / eval、optimize 可用」。
+
+**为什么**：默认值写「见实现常量」等于让用户去读源码；评测集默认名与实现不一致会直接导致「按文档放文件却报缺失」；缺 `--timeout` / `--agent` 会让用户以为不支持。文档必须能独立支撑「照着敲一条命令」。
+
+## B4 复核修复：optimize 产物目录、`--log-dir` 与示例对齐（同日第十一批）
+
+**原来**：optimize 的实时报告与改善记录固定叫 `optimize-report.html` / `improve_iter_<n>.json`，两次运行会互相覆盖，文档也写成单层目录；optimize 的 `--log-dir` 实际生效但选项表未列；镜像示例写「共 0.1 KB」，而符号链接镜像的字节数为 0（实际输出是「链接镜像」）；deny 小节写「你的技能目录与全局配置不会被读写」，把报告落盘这条唯一写入点说过头了。
+
+**现在**：optimize 每次运行落独立子目录 `<logDir>/optimize-<时间戳>-<随机>/`，文档补目录结构表（HTML / JSON / `improve_iter_<n>.json`）与 `--log-dir` 选项；镜像示例改成实际输出「链接镜像」；deny 小节限定为「deny 配置不读写用户其它技能目录与全局配置；报告默认写 `<技能目录>/.evals`（可用 `--log-dir` 改）」。
+
+**为什么**：固定文件名在同一技能上跑两次 optimize 就会覆盖上一轮证据，排查时无法对比；文档没列 `--log-dir` 等于把一个已支持的选项藏起来；示例与真实输出不一致会让用户以为镜像坏了。

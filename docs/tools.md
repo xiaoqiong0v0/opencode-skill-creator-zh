@@ -4,7 +4,7 @@
 
 本插件只暴露 **1 个工具** `skill_zh`，入参只有一个 `args` 字符串。工具 description 为 `中文技能工坊：新建、校验、评测、优化并打包 OpenCode 技能`（33 字符），参数细节全部交给 `skill_zh help`。
 
-> 当前状态：B0/B1/B2 完成，B3 已接真实现——`new` / `validate` 可用；`eval` / `optimize` / `package` 待 B4、`install` 待 B5，调用会返回「尚未实现」三段式。相对路径的解析基准见下节「路径解析基准」。
+> 当前状态：B0–B4 完成——`new` / `validate` / `eval` / `optimize` 已接真实现；`package` 与 `install` 待 B5，调用会返回「尚未实现」三段式。相对路径的解析基准见下节「路径解析基准」。
 
 ## 通用约定
 
@@ -16,7 +16,7 @@
 | 路径基准 | 相对路径按**当前会话的项目目录**解析（见下节「路径解析基准」）；工具参数是文件系统路径，不是 shell 命令 |
 | 输出 | 纯文本，直接回给模型；失败也返回文本，不抛原始堆栈 |
 | 失败格式 | 统一三段式：`错误：` / `改法：` / `可用：skill_zh help` |
-| 调试 | `SKILL_ZH_DEBUG=1`（打印执行细节与原始错误）**尚未实现**，当前调试入口是 `SKILL_ZH_LOG_DISABLE=1` 关闭日志、`~/.config/opencode/plugin-logger.jsonc` 的 `enabled` 打开日志；默认不外泄内部路径与堆栈 |
+| 调试 | `SKILL_ZH_DEBUG=1` 输出执行细节到 stderr（评测镜像清单 / 跳过原因、同名技能屏蔽路径等）；默认不外泄内部路径与堆栈。日志另有 `SKILL_ZH_LOG_DISABLE=1` 关闭、`~/.config/opencode/plugin-logger.jsonc` 的 `enabled` 打开 |
 
 失败输出模板：
 
@@ -59,8 +59,8 @@ skill_zh —— 中文 OpenCode 技能创建工具（CLI 风格单工具）
   help      显示本帮助，覆盖全部子命令与示例
   new       按中文模板生成技能骨架（SKILL.md + references/），--force 覆盖前留 .bak
   validate  校验 SKILL.md 结构与 frontmatter，--strict 把长度/命名提示升级为错误
-  eval      跑触发率评测，输出通过率与失败用例
-  optimize  按评测失败反复改写 description（先训练/测试集切分）
+  eval      跑触发率评测，输出通过率、逐条结果与失败用例
+  optimize  按评测失败反复改写 description（训练/测试集 6:4 切分）
   package   只导出可分发的技能目录（--out 必填）
 
 示例：
@@ -181,18 +181,23 @@ skill_zh —— 中文 OpenCode 技能创建工具（CLI 风格单工具）
 
 ## skill_zh eval
 
-跑触发率评测：按技能目录下的评测集把每条 query 交给被测模型，统计技能是否被选中，输出通过率、逐条结果与失败用例清单。
+跑触发率评测：按技能目录下的评测集把每条 query 交给被测模型，统计技能是否被选中，输出通过率、逐条结果、失败用例、镜像汇总与报告路径。
 
 | 参数 | 必填 | 默认 | 说明 |
 |---|---|---|---|
-| `<技能目录>` | 是 | — | 评测集默认取 `<技能目录>/evals/evals.json` |
-| `--runs <次数>` | 否 | 见实现常量 | 每条 query 重复次数，必须是正整数 |
-| `--workers <并发>` | 否 | 见实现常量 | 并发数，必须是正整数；按 provider 限额与预算调小 |
-| `--no-shadow-guard` | 否 | 关 | 关闭「自动屏蔽同名技能」（见下节）；关闭后只要发现同名技能就中止评测 |
+| `<技能目录>` | 是 | — | 含 `SKILL.md` 的技能目录；技能可放在任意位置，相对路径按「路径解析基准」一节解析 |
+| `--runs <N>` | 否 | `1` | 每条 query 的重复次数，必须是正整数 |
+| `--workers <N>` | 否 | `1` | 并发数，必须是正整数；按 provider 限额与预算调大 |
+| `--timeout <ms>` | 否 | `120000` | 单次 `opencode run` 的超时（毫秒），必须是正整数 |
+| `--model <provider/model>` | 否 | `opencode` 默认模型 | 传给评测子进程 |
+| `--agent <名称>` | 否 | `build` | 传给评测子进程的 agent（需暴露技能工具事件） |
+| `--eval-set <路径>` | 否 | `<技能目录>/eval_set.json` | 评测集文件；相对路径按当前会话项目目录解析 |
+| `--log-dir <路径>` | 否 | `<技能目录>/.evals` | 报告目录；每次评测写一份 JSON（文件名带时间戳 + 随机后缀，不会互相覆盖） |
+| `--no-shadow-guard` | 否 | 关 | 关闭「同名技能自动屏蔽」；关闭后只要发现同名技能就中止（见下节） |
 
-逐条次数与并发的默认值以 `skill_zh help` 与 `src/cli/eval.ts` 中的常量为准。评测调用 `opencode run`，需要可用的 provider 与模型，且**会产生费用**。
+评测**会产生费用**：`eval` 调用的是真实的 `opencode run`，需要可用的 provider 与模型。
 
-评测集格式（JSON 数组）：
+评测集格式（JSON 数组，`query` 非空字符串、`should_trigger` 必须是布尔值；空数组、非数组、坏 JSON 都按三段式失败）：
 
 ```json
 [
@@ -204,22 +209,39 @@ skill_zh —— 中文 OpenCode 技能创建工具（CLI 风格单工具）
 输出示例：
 
 ```text
-评测 ./skills/api-doc-writer：通过率 0.85（17/20，每条 3 次，阈值 0.5）
+评测 ./skills/api-doc-writer：通过率 0.50（1/2，每条 2 次，阈值 0.5）
+逐条结果：
+  ✓ 应触发 1.00（2/2）「帮我把这套发布流程做成技能」
+  ✗ 不应触发 1.00（2/2）「写一段生日邀请函」
 失败用例：
-  应触发未触发（2）
-    - "把接口文档的更新流程固化下来"   命中 0/3
-    - "这套 SKILL.md 写法能不能复用"   命中 1/3
   不应触发却触发（1）
-    - "解释一下什么是 OpenAPI"         命中 2/3
-下一步：
-  skill_zh optimize ./skills/api-doc-writer --iterations 5
+    - 「写一段生日邀请函」 命中 2/2
+镜像：3 个条目，链接镜像（跳过 0 项）
+报告：./skills/api-doc-writer/.evals/eval-2026-10-29T10-00-00-000Z-1a2b.json
+下一步：skill_zh optimize ./skills/api-doc-writer --iterations 3（按失败用例改写 description）
+```
+
+失败示例（缺少技能目录）：
+
+```text
+错误：缺少参数 <技能目录>
+改法：运行 skill_zh eval ./skills/my-skill（技能目录里要有 SKILL.md）
+可用：skill_zh help
 ```
 
 失败示例（评测集缺失）：
 
 ```text
-错误：评测集不存在：./skills/api-doc-writer/evals/evals.json
-改法：在技能目录下新建 evals/evals.json，写入 [{"query":"...","should_trigger":true}] 形式的 JSON 数组
+错误：评测集不存在：./skills/api-doc-writer/eval_set.json
+改法：在技能目录下新建 eval_set.json，写入 [{"query":"…","should_trigger":true}] 形式的 JSON 数组
+可用：skill_zh help
+```
+
+失败示例（非法参数值）：
+
+```text
+错误：参数 --runs 非法：abc（只接受正整数）
+改法：改用正整数，例如 skill_zh eval ./skills/api-doc-writer --runs 3
 可用：skill_zh help
 ```
 
@@ -240,56 +262,83 @@ skill_zh —— 中文 OpenCode 技能创建工具（CLI 风格单工具）
 
 三条硬约束（SPEC `R6.2` 的 J1/J2/J3/J9）：
 
-- **不整目录递归拷贝**：镜像一律逐条目/逐文件，并有单文件大小上限；符号链接创建失败时（Windows 非开发者模式常见）也只逐文件拷已知条目，不搬 `node_modules/`、`dist/`、`.git/` 之类，超上限的文件跳过。
-- **项目根不靠向上瞎找**：只在调用方传入的上下文里取（`ToolContext.directory` → `worktree`，都空则三段式报错）；不用 `process.cwd()`、不向上查找。只有独立 CLI 场景才兜底向上找，且要排除 `~/.opencode` / `~/.config/opencode` 并写明实际用的是哪个根。
+- **不整目录递归拷贝**：镜像一律逐条目/逐文件，并有 **2 MiB** 单文件大小上限；符号链接创建失败时（Windows 非开发者模式常见）也只逐文件拷已知条目——技能目录只放行 `SKILL.md`、`agents/**`、`references/**`、`templates/**`，`node_modules/`、`dist/`、`.git/` 与超限文件跳过。源码门禁：`grep -rn "cpSync(.*recursive" src/` 命中数 = 0。
+- **项目根不靠向上瞎找**：只在调用方传入的上下文里取（`ToolContext.directory` → `worktree`，都空则三段式报错）；不用 `process.cwd()`、不向上查找。只有独立 CLI 场景才兜底向上找，且要排除 `~/.opencode` / `~/.config/opencode`、校验项目形态（含 `.opencode/skills` 或项目配置）并写明实际用的是哪个根。
 - **被测技能本体不泄漏**：本体、其祖先目录、`skills` 根自身、指向 `skills` 的别名都不会被镜像进来（按真实路径判定，绕不过去）。
 
-> 方案 C 的取舍：分数最接近真实使用，但与项目强耦合（换个项目分数会变，跨项目不可比）；输出里会注明本次镜像了哪些兄弟技能。做 description 的 A/B 对比时，可先把兄弟技能临时移出项目目录。
+> 方案 C 的取舍：分数最接近真实使用，但与项目强耦合（换个项目分数会变，跨项目不可比）；输出里会注明本次镜像了多少条目。
 >
-> 调试开关 `SKILL_ZH_DEBUG=1` 打开后，会打印镜像了哪些条目、各多大、哪些被跳过；默认只输出一行汇总。临时隔离根在评测结束（含报错与取消）后删除。
+> 调试开关 `SKILL_ZH_DEBUG=1` 打开后，会逐条打印镜像了哪些条目（相对路径、类型、字节数）与哪些被跳过（含原因）；默认只输出一行汇总。临时隔离根在评测结束（含报错与取消）后删除。
 
 ### 同名技能遮挡与自动 deny
 
 评测跑的是合成技能 `<基础名>-skill-<随机 id>`，只把这个名字的触发算命中。但**全局技能不会被隔离**：`opencode` 子进程的 `HOME` / `XDG_CONFIG_HOME` 沿用你的环境，装在 `~/.config/opencode/skills`、`~/.claude/skills`、`~/.agents/skills` 里的同名技能照样在候选集里；模型若选中旧的那个，合成技能就是 0 命中（假阴性）。
 
-本版的处理是**不改你的任何目录，只改隔离根**：评测前枚举可见技能，一旦发现与被测技能同名（基础名相同），就在 `evalRoot` 的 `.opencode/opencode.json` 写 `permission.skill.<基础名> = "deny"`，让旧技能在**本次评测的子进程里**不可见。所以「评测一个已经装好的技能」不再需要先删掉它或给它改名。
+本版的处理是**不改你的任何目录，只改隔离根**：评测前枚举可见技能，一旦发现与被测技能同名（基础名相同），就在 `evalRoot` 的 `.opencode/opencode.json` 写 `permission.skill.<基础名> = "deny"`（与已镜像的配置合并；若目标是指向源文件的符号链接，先摘链再写），让旧技能在**本次评测的子进程里**不可见。所以「评测一个已经装好的技能」不再需要先删掉它或给它改名。
 
 | 情况 | 行为 |
 |---|---|
-| 发现了同名技能 | 自动写 deny，评测继续；输出提示「已在本轮评测中屏蔽 `<路径>`」 |
+| 发现了同名技能 | 自动写 deny，评测继续；调试开关下打印被屏蔽的实际路径 |
 | deny 写不进，或目标版本不支持按名 deny | **不跑**，按三段式失败：「改法」给出冲突的实际路径与一条可直接复制的处置命令（不静默放行） |
+| 枚举可见技能失败（`opencode debug skill` 不可用等） | 同样**不跑**，按三段式失败 |
 | 想保持旧技能在场做对照 | 加 `--no-shadow-guard`：不写 deny，检测到同名即中止（回到「先处理环境再评测」的老行为） |
 
-> 该屏蔽只在本次评测的临时隔离根里生效，评测结束随隔离根一起删除；你的技能目录与全局配置**不会被读写**。
+> 该屏蔽只在本次评测的临时隔离根里生效，评测结束随隔离根一起删除。deny 配置**不读写用户其它技能目录与全局配置**；评测报告默认写 `<技能目录>/.evals`（可用 `--log-dir` 改到别处），这是本命令唯一的持久化写入点。
 
 ## skill_zh optimize
 
-按评测失败迭代改写 description：先按位置切分训练/测试集，每轮用训练集失败模式改写描述、再用测试集评估，输出每轮通过率与最终 description。
+按评测失败迭代改写 description：先按位置切分训练/测试集（**6:4**），每轮用训练集失败模式改写描述、再用测试集评估，输出每轮通过率与最终 description。
 
 | 参数 | 必填 | 默认 | 说明 |
 |---|---|---|---|
-| `<技能目录>` | 是 | — | 同 `eval`，评测集默认取 `evals/evals.json` |
-| `--iterations <轮数>` | 否 | 见实现常量 | 最大迭代轮数；训练集全通过可提前结束 |
+| `<技能目录>` | 是 | — | 同 `eval` |
+| `--iterations <N>` | 否 | `5` | 最大迭代轮数，必须是正整数；训练集全通过可提前结束 |
+| `--runs <N>` | 否 | `1` | 每条 query 的重复次数，必须是正整数 |
+| `--workers <N>` | 否 | `1` | 并发数，必须是正整数 |
+| `--timeout <ms>` | 否 | `120000` | 单次 `opencode run` 的超时（毫秒） |
+| `--model <provider/model>` | 否 | `opencode` 默认模型 | 同时用于评测与改写子进程 |
+| `--agent <名称>` | 否 | `build` | 评测子进程使用的 agent |
+| `--eval-set <路径>` | 否 | `<技能目录>/eval_set.json` | 评测集文件 |
+| `--log-dir <路径>` | 否 | `<技能目录>/.evals` | 报告根目录；每次运行在其下建独立子目录（见下方「产物」） |
+| `--no-shadow-guard` | 否 | 关 | 关闭同名技能自动屏蔽（同 `eval`） |
+
+产物：每次运行落一个独立子目录 `<logDir>/optimize-<时间戳>-<随机后缀>/`，内含：
+
+| 文件 | 内容 |
+|---|---|
+| `optimize-report.html` | 每轮自动刷新的实时报告 |
+| `optimize-<时间戳>-<随机后缀>.json` | 最终结果与逐轮历史 |
+| `improve_iter_<n>.json` | 第 n 轮改善子进程的提示词、响应与解析结果 |
+
+固定命名 + 独立子目录，意味着两次 `optimize`（甚至并发调用）不会互相覆盖报告与改善记录。
 
 输出示例：
 
 ```text
-优化 ./skills/api-doc-writer：5 轮
-  第 1 轮  训练 0.62  测试 0.58
-  第 2 轮  训练 0.78  测试 0.71
-  ...
-  第 5 轮  训练 0.93  测试 0.86  ← 采用（按测试集得分选优）
-
-最终 description（测试集 0.86）：
+优化 ./skills/api-doc-writer：2 轮（训练 3 / 测试 2，holdout 0.4）
+  第 1 轮  训练 2/3  测试 1/2
+  第 2 轮  训练 3/3  测试 2/2
+最终 description（测试集 2/2）：
   为 API 文档编写与维护流程创建技能……
-下一步：把上面的 description 写回 SKILL.md 的 frontmatter，再跑一次 skill_zh eval 复核
+镜像：3 个条目，链接镜像（跳过 0 项）
+报告：./skills/api-doc-writer/.evals/optimize-2026-10-29T10-00-00-000Z-1a2b/optimize-2026-10-29T10-01-00-000Z-3c4d.json
+实时报告：./skills/api-doc-writer/.evals/optimize-2026-10-29T10-00-00-000Z-1a2b/optimize-report.html
+下一步：把上面的 description 写回 ./skills/api-doc-writer/SKILL.md 的 frontmatter，再跑一次 skill_zh eval ./skills/api-doc-writer 复核
+```
+
+失败示例（评测集缺失 / 参数非法与 `eval` 同款，此外）：
+
+```text
+错误：参数 --iterations 非法：0（只接受正整数）
+改法：改用正整数，例如 skill_zh optimize ./skills/api-doc-writer --iterations 5
+可用：skill_zh help
 ```
 
 失败示例（模型/CLI 不可用）：
 
 ```text
-错误：无法调用 opencode 执行评测（未找到可用的 provider 或模型）
-改法：在 OpenCode 里配置可用模型后重试：skill_zh optimize ./skills/api-doc-writer --iterations 3
+错误：无法调用 opencode 执行评测：opencode run exited 1: …
+改法：先确认 opencode CLI 可用、provider 与模型已配置，再运行 skill_zh optimize ./skills/api-doc-writer
 可用：skill_zh help
 ```
 

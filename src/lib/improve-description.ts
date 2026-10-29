@@ -55,7 +55,7 @@ const TRAILING_MESSAGE = "Process the attached file and follow its instructions.
  * @param prompt 完整提示词文本（原样写入临时文件）
  * @param model 模型名；`undefined` 时不传 `--model`，交给 opencode 自己选默认
  * @param timeout 超时秒数（默认 300 秒）
- * @param opts 项目根与调用方取消信号
+ * @param opts 项目根、超时与调用方取消信号
  * @returns 模型返回的文本：优先用 JSON 事件里的 text 分片拼接，否则退回原始 stdout
  * @throws 取消时抛 `AbortError`；子进程失败时抛带退出码与 stderr 的错误
  */
@@ -63,8 +63,9 @@ async function callOpenCode(
   prompt: string,
   model: string | undefined,
   timeout: number = DEFAULT_TIMEOUT_SECONDS,
-  opts: { projectRoot?: string; signal?: AbortSignal } = {},
+  opts: { projectRoot: string; timeout?: number; signal?: AbortSignal },
 ): Promise<string> {
+  const timeoutSeconds = opts.timeout ?? timeout;
   const tmpPath = join(
     tmpdir(),
     `${TEMP_PROMPT_PREFIX}${randomBytes(TEMP_PROMPT_RANDOM_BYTES).toString("hex")}.md`,
@@ -82,7 +83,7 @@ async function callOpenCode(
     let stdout = "";
     let lineBuffer = "";
     const textParts: string[] = [];
-    const timeoutMs = timeout * 1000;
+    const timeoutMs = timeoutSeconds * 1000;
 
     /** 处理一整行 stdout：只认 `type === "text"` 的事件分片，其余（含非 JSON 行）丢弃。 */
     const consumeLine = (line: string): void => {
@@ -120,9 +121,9 @@ async function callOpenCode(
       }
     };
 
-    // 改善子进程本身没有显式 cwd；把 PWD/cwd 钉到这条改善所属的项目根，让它按选中的
-    // 项目解析 providers/agents，而不是沿用调用方可能已经过时的 PWD。
-    const cwd = opts.projectRoot ?? process.cwd();
+    // 改善子进程把 cwd/PWD 钉到这条改善所属的项目根，让它按选中的项目解析
+    // providers/agents；**不读 process.cwd()**（J2 禁止用进程 cwd 派生根）。
+    const cwd = opts.projectRoot;
     const result = await runProcess(cmd, {
       cwd,
       env: buildOpencodeEnv(cwd),
@@ -194,8 +195,10 @@ export interface ImproveDescriptionOptions {
   testResults?: EvalOutput | null;
   logDir?: string | null;
   iteration?: number | null;
-  /** 改善子进程必须据此解析 providers/agents 的项目根。 */
-  projectRoot?: string;
+  /** 改善子进程必须据此解析 providers/agents 的项目根（必填，不用 process.cwd 兜底）。 */
+  projectRoot: string;
+  /** 改善子进程的单次超时（秒）；缺省 300 秒。 */
+  timeout?: number;
   /** 调用方持有的取消信号；abort 时杀掉改善子进程。 */
   signal?: AbortSignal;
 }
@@ -230,6 +233,7 @@ export async function improveDescription(
     logDir,
     iteration,
     projectRoot,
+    timeout,
     signal,
   } = opts;
 
@@ -337,6 +341,7 @@ Please respond with only the new description text in <new_description> tags, not
 
   const text = await callOpenCode(prompt, model, undefined, {
     projectRoot,
+    ...(timeout === undefined ? {} : { timeout }),
     signal,
   });
 
@@ -368,6 +373,7 @@ Please respond with only the new description text in <new_description> tags, not
 
     const shortenText = await callOpenCode(shortenPrompt, model, undefined, {
       projectRoot,
+      ...(timeout === undefined ? {} : { timeout }),
       signal,
     });
     const shortenMatch = shortenText.match(NEW_DESCRIPTION_RE);

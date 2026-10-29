@@ -2,7 +2,7 @@
 
 本文是**需求与验收口径的唯一出处**。实施批次见 [ROADMAP.md](ROADMAP.md)，编码规范见 [CONVENTIONS.md](CONVENTIONS.md)，用法定稿见 [../README.md](../README.md)。
 
-> 当前状态：`src/` 骨架已建（B0/B1 完成），子命令业务待 B3/B4。文中所有行为均为**目标行为**，验收项按 ROADMAP 批次逐步成立。
+> 当前状态：B0–B4 已完成——骨架、单工具壳、`new` / `validate`、`eval` / `optimize` 均已落地；`package` / `install` 待 B5，B6 做技能正文与文案收尾。文中所有行为均为**目标行为**，验收项按 ROADMAP 批次逐步成立。
 
 ## 1. 目标
 
@@ -102,7 +102,7 @@
 
 ### R6.2 技能评测隔离约束
 
-评测（`eval` / `optimize`）会建一个临时隔离根 `evalRoot` 再跑 `opencode run`（`src/lib/run-eval.ts`，**B4 才落地，当前未迁入**）。隔离根的内容与来源必须满足下列 9 条，取代上游「整目录 symlink、失败即递归整拷 + 无边界向上找项目根 + 同名技能命中即中止」的做法；镜像范围**已定方案 C**（2026-10-29）。问题推导、决策记录与完整测试点见 [design/技能评测隔离问题.md](design/技能评测隔离问题.md)。
+评测（`eval` / `optimize`）会建一个临时隔离根 `evalRoot` 再跑 `opencode run`（`src/lib/run-eval.ts`，**B4 已落地**）。隔离根的内容与来源必须满足下列 9 条，取代上游「整目录 symlink、失败即递归整拷 + 无边界向上找项目根 + 同名技能命中即中止」的做法；镜像范围**已定方案 C**（2026-10-29）。问题推导、决策记录与完整测试点见 [design/技能评测隔离问题.md](design/技能评测隔离问题.md)。
 
 | 编号 | 要求（可判定） | 判定方式 |
 |---|---|---|
@@ -140,10 +140,16 @@
 | R6.1-I4 | `grep -n "重命名目录"`（`docs/`、`src/`）每条命中须在否定/引用语境（同句含 不能 / 无效 / 不要 / 不给 / 不出现 / 建议）；提示文案枚举的动作属于 5 类 |
 | R6.1-I5 | 单测：手工改 `SKILL.md` 后重装内容不变 + 提示 `skill_zh install --force`；加 `--force` 后为包内版本且状态目录存有备份 |
 | R6.2-J1 | 单测：打桩 `symlinkSync` 抛 `EPERM` 后跑隔离根镜像，`evalRoot` 文件集合 ⊆ 已知条目集合，`node_modules/`、`dist/`、`.git/` 与超单文件上限的大文件均未进入；源码门禁：`grep -n "cpSync(.*recursive"`（`src/lib/`）命中数 = 0 |
-| R6.2-J2 | 单测：`ToolContext.directory` 被透传到分发层并作为路径基准（`worktree` 为次选）；两者皆空时输出三段式（恰好三行）；`process.cwd` 打桩后取根过程不读它；源码门禁：`src/cli/**` 与 `src/tool.ts` 内 `process.cwd()` 真实调用数 = 0（注释提及不算），`src/tool.ts` 无「只读 args、丢弃 context」写法 |
+| R6.2-J2 | 单测：`ToolContext.directory` 被透传到分发层并作为路径基准（`worktree` 为次选）；两者皆空时输出三段式（恰好三行）；`process.cwd` 打桩后取根过程不读它；源码门禁：`src/cli/**` 与 `src/tool.ts` 内 `process.cwd()` 真实调用数 = 0（注释提及不算），`src/tool.ts` 无「只读 args、丢弃 context」写法；独立 CLI 兜底：从 home 下的临时目录调用**不得返回 home**，只有 `.opencode/` 而无 `skills`/项目配置的候选根不被采纳 |
 | R6.2-J3 | 单测：被测技能与兄弟技能同存时，`evalRoot` 内按内容哈希搜不到被测技能；skills 根别名 / 祖先别名 / `.opencode/` 指向 skills 的条目三种用例均被拒，正常兄弟技能仍被镜像 |
-| R6.2-J6 | 单测：给定同名全局技能 → `evalRoot/.opencode/opencode.json` 出现 `permission.skill.<name> = "deny"`，且探测目录文件集合与哈希不变（未写用户目录） |
-| R6.2-J8 | 单测：给定 `--no-shadow-guard` → 不写任何 deny 配置，且同名技能存在时按冲突消息中止（J7 的兜底路径同批用打桩写入失败验证） |
+| R6.2-J4 | 单测：成功 / 抛错 / 取消三条路径结束后隔离根均不存在；预取消用例从未调用 `mkdtempSync` |
+| R6.2-J5 | 单测：`SKILL_ZH_DEBUG=1` 时镜像清单（条目 + 类型 + 字节数 + 跳过原因）与磁盘实际内容一致；未开调试时输出不含逐条清单、只输出一行汇总 |
+| R6.2-J6 | 单测：给定同名全局技能 → `evalRoot/.opencode/opencode.json` 出现 `permission.skill.<name> = "deny"`（与已镜像配置合并；目标为符号链接时先摘链），且探测目录文件集合与哈希不变（未写用户目录）；可失败性：注释掉 deny 写入后该用例必须变红 |
+| R6.2-J7 | 单测：把 deny 配置写入打桩成抛错 → 不启动任何 `opencode run`，错误三段式的「改法」含冲突实际路径与一条可复制命令；**单条 query 阶段**写入失败同样整轮中止（不计入 `errored`、不产出报告）；枚举不可用时行为一致 |
+| R6.2-J8 | 单测：给定 `--no-shadow-guard` → 不写任何 deny 配置，且同名技能存在时按冲突消息中止（J7 的兜底路径同批用打桩写入失败验证）；无同名技能时评测正常执行 |
+| R6.2-J9 | 单测：隔离根顶层条目 = 根配置文档 + `.opencode/`（含兄弟技能、非 skills 条目）+ 被引用文件，四项之外不存在；被测技能按内容哈希不可见 |
+| B4-eval | `skill_zh eval <技能目录>` 输出通过率（passed/total、每条次数、阈值）、逐条结果、失败用例清单、镜像汇总与报告路径；`--runs` / `--workers` / `--timeout` / `--model` / `--agent` / `--eval-set` / `--log-dir` / `--no-shadow-guard` 全部生效；缺参、评测集缺失、参数非法均走三段式 |
+| B4-optimize | `skill_zh optimize <技能目录>` 输出每轮训练/测试通过率与最终 description，并在 `<技能目录>/.evals/` 落盘 HTML 实时报告与 JSON 结果；`--iterations` 缺值/非法走三段式 |
 | R7 | `npm run typecheck` 退出码 0；`npm test` 退出码 0；对 `README.md`、`docs/`、`src/` 搜跨技能引用措辞无命中（来源/许可段落除外） |
 | R7-Node | `engines.node` 与 `test` 脚本用到的 Node flag 必须兼容（当前 `>=22.3` / `--experimental-test-module-mocks`）：`grep -n "experimental-test-module-mocks" package.json` 有命中时，`engines.node` 下限不得低于该 flag 的引入版本（22.3） |
 

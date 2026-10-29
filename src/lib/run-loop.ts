@@ -22,7 +22,7 @@ import { abortError, buildEvalWarnings, runEval } from "./run-eval.js";
 import { parseSkillMd } from "./utils.js";
 
 import type { HistoryEntry } from "./improve-description.js";
-import type { EvalItem, EvalOutput, EvalResultItem } from "./run-eval.js";
+import type { EvalItem, EvalOutput, EvalResultItem, MirrorSummary, SkillEnumerator } from "./run-eval.js";
 
 // ---------------------------------------------------------------------------
 // 常量
@@ -133,6 +133,10 @@ export interface RunLoopOptions {
    * 泄漏进去。不传 -> 不做额外排除。
    */
   excludedSkillPath?: string;
+  /** 是否自动屏蔽同名技能（默认 true；`--no-shadow-guard` 时为 false）。 */
+  shadowGuard?: boolean;
+  /** 可见技能枚举器（缺省走 `opencode debug skill`）。 */
+  skillEnumerator?: SkillEnumerator;
 }
 
 /** 单次迭代的历史记录：描述 + 训练/测试集分数 + 逐条结果。 */
@@ -167,6 +171,8 @@ export interface RunLoopOutput {
   train_size: number;
   test_size: number;
   history: LoopHistoryEntry[];
+  /** 各轮镜像的汇总（条目数 / 字节数 / 跳过数）。 */
+  mirror?: MirrorSummary;
 }
 
 // ---------------------------------------------------------------------------
@@ -205,6 +211,8 @@ export async function runLoop(opts: RunLoopOptions): Promise<RunLoopOutput> {
     projectRoot,
     signal,
     excludedSkillPath,
+    shadowGuard,
+    skillEnumerator,
   } = opts;
 
   if (signal?.aborted) throw abortError();
@@ -235,6 +243,7 @@ export async function runLoop(opts: RunLoopOptions): Promise<RunLoopOutput> {
 
   const history: LoopHistoryEntry[] = [];
   let exitReason = "unknown";
+  const mirrorTotals: MirrorSummary = { entries: 0, bytes: 0, skipped: 0 };
 
   for (let iteration = 1; iteration <= maxIterations; iteration++) {
     if (signal?.aborted) throw abortError();
@@ -263,7 +272,14 @@ export async function runLoop(opts: RunLoopOptions): Promise<RunLoopOutput> {
       agent,
       signal,
       excludedSkillPath: excludePath,
+      shadowGuard,
+      skillEnumerator,
     });
+    if (allResults.mirror) {
+      mirrorTotals.entries += allResults.mirror.entries;
+      mirrorTotals.bytes += allResults.mirror.bytes;
+      mirrorTotals.skipped += allResults.mirror.skipped;
+    }
     const evalElapsed = (Date.now() - t0) / 1000;
 
     // 按位置把结果切回训练/测试。runEval 的契约是「每条评测集条目一条结果、按评测集
@@ -410,6 +426,8 @@ export async function runLoop(opts: RunLoopOptions): Promise<RunLoopOutput> {
       iteration,
       // 改善子进程钉到同一个项目根，并继承调用方的取消信号（见文件头契约 1、2）
       projectRoot,
+      // 与评测阶段共用同一个 --timeout（秒），不退回改善子进程的 300s 默认值。
+      timeout,
       signal,
     });
     const improveElapsed = (Date.now() - t1) / 1000;
@@ -461,5 +479,6 @@ export async function runLoop(opts: RunLoopOptions): Promise<RunLoopOutput> {
     train_size: trainSet.length,
     test_size: testSet.length,
     history,
+    ...(mirrorTotals.entries > 0 ? { mirror: mirrorTotals } : {}),
   };
 }

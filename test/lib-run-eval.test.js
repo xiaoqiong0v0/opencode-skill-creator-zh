@@ -29,12 +29,10 @@ import { basename, dirname, join } from "node:path";
 import { test } from "node:test";
 
 import {
-  assertNoInstalledSkillConflict,
   createV2SkillEnumerator,
   findProjectRoot,
   findSkillConflicts,
   findSkillConflictsInList,
-  skillConflictMessage,
   symlinkProjectOpenCodeConfig,
 } from "../dist/lib/run-eval.js";
 
@@ -106,13 +104,13 @@ const withStderrCapture = (body) => {
 };
 
 // ---------------------------------------------------------------------------
-// findProjectRoot：从 cwd 逐级向上找 `.opencode/` 或 `.claude/`
+// findProjectRoot：仅独立 CLI 兜底；跳过运行时目录、校验项目形态
 // ---------------------------------------------------------------------------
 
-test("findProjectRoot 命中祖先目录的 .opencode 时返回该目录", () => {
+test("findProjectRoot 命中祖先目录的 .opencode/skills 时返回该目录", () => {
   const root = mkdtempSync(join(tmpdir(), "skill-eval-rootprobe-"));
   try {
-    mkdirSync(join(root, ".opencode"), { recursive: true });
+    mkdirSync(join(root, ".opencode", "skills"), { recursive: true });
     mkdirSync(join(root, "nested", "deeper"), { recursive: true });
 
     assert.equal(findProjectRoot(join(root, "nested", "deeper")), root);
@@ -121,10 +119,23 @@ test("findProjectRoot 命中祖先目录的 .opencode 时返回该目录", () =>
   }
 });
 
-test("findProjectRoot 命中祖先目录的 .claude 时返回该目录", () => {
+test("findProjectRoot 不采纳只有 .claude/skills 的目录（与 SPEC J2 对齐）", () => {
   const root = mkdtempSync(join(tmpdir(), "skill-eval-claudeprobe-"));
   try {
-    mkdirSync(join(root, ".claude"), { recursive: true });
+    mkdirSync(join(root, ".claude", "skills"), { recursive: true });
+    const start = join(root, "nested");
+    mkdirSync(start, { recursive: true });
+
+    assert.equal(findProjectRoot(start), start);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("findProjectRoot 采纳带项目配置文档的祖先目录", () => {
+  const root = mkdtempSync(join(tmpdir(), "skill-eval-configprobe-"));
+  try {
+    writeFileSync(join(root, "opencode.json"), "{}\n");
     mkdirSync(join(root, "nested"), { recursive: true });
 
     assert.equal(findProjectRoot(join(root, "nested")), root);
@@ -133,34 +144,40 @@ test("findProjectRoot 命中祖先目录的 .claude 时返回该目录", () => {
   }
 });
 
-test("findProjectRoot 一路向上都不命中时原样返回传入的 cwd", () => {
-  // 相对路径 `"."` 的父目录仍是 `"."`，向上查找到此为止，因此这条用例不受本机
-  // 上层目录（如家目录里的 `.opencode`）影响。
-  // 注意：若运行目录（仓库根）自带 `.opencode`/`.claude`，这里命中的是「命中分支」
-  // 而不是末尾的兜底 return —— 返回值相同（都是 `.`），所以本用例只锁定「返回值是
-  // 传入的 cwd」这一契约；兜底分支本身的可达性依赖仓库根无标记，由下面那条绝对路径
-  // 用例（在无标记环境里）覆盖。
-  assert.equal(findProjectRoot("."), ".");
+test("findProjectRoot 不采纳只有 .opencode/ 而无 skills/配置的目录", () => {
+  const root = mkdtempSync(join(tmpdir(), "skill-eval-shapeless-"));
+  try {
+    mkdirSync(join(root, ".opencode"), { recursive: true });
+    const start = join(root, "nested");
+    mkdirSync(start, { recursive: true });
+
+    assert.equal(findProjectRoot(start), start);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
-test("findProjectRoot 在绝对临时路径上不命中时回退 cwd", (t) => {
+test("findProjectRoot 不返回 home（~/.opencode 是运行时目录），回退起点", () => {
+  const fakeHome = mkdtempSync(join(tmpdir(), "skill-eval-home-"));
+  const workdir = join(fakeHome, "work");
+  try {
+    // home 自身带 .opencode/skills（运行时目录）也会被 arguably 判成项目形态 ——
+    // 必须靠「home 不算项目根」这条排除掉，否则从 home 子目录调用会返回 home。
+    mkdirSync(join(fakeHome, ".opencode", "skills"), { recursive: true });
+    mkdirSync(workdir, { recursive: true });
+
+    assert.equal(findProjectRoot(workdir, fakeHome), workdir);
+  } finally {
+    rmSync(fakeHome, { recursive: true, force: true });
+  }
+});
+
+test("findProjectRoot 在绝对临时路径上不命中时回退传入的起点", () => {
   const root = mkdtempSync(join(tmpdir(), "skill-eval-nomarker-"));
   try {
-    mkdirSync(join(root, "nested"), { recursive: true });
-    // 向上查找会一直走到盘符根。若本机某个上层目录（家目录等）自带 `.opencode` 或
-    // `.claude`，兜底分支就不可达 —— 这属于环境限制，显式 skip 而不是弱化断言。
-    let probe = root;
-    for (;;) {
-      if (existsSync(join(probe, ".opencode")) || existsSync(join(probe, ".claude"))) {
-        t.skip(`上层目录 ${probe} 自带 .opencode/.claude，兜底分支不可达`);
-        return;
-      }
-      const parent = dirname(probe);
-      if (parent === probe) break;
-      probe = parent;
-    }
-
-    assert.equal(findProjectRoot(join(root, "nested")), join(root, "nested"));
+    const start = join(root, "nested");
+    mkdirSync(start, { recursive: true });
+    assert.equal(findProjectRoot(start), start);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -739,30 +756,6 @@ test("** 递归仍被报告为不支持的边界", () => {
 // 冲突守卫：枚举结果 -> 中止 / 放行
 // ---------------------------------------------------------------------------
 
-test("assertNoInstalledSkillConflict 命中同名技能时抛出带位置的冲突", async () => {
-  const enumerate = async () => [{ name: "demo-skill", location: "/skills/demo-skill" }];
-
-  await assert.rejects(
-    assertNoInstalledSkillConflict("demo-skill", "/project", enumerate),
-    /already available to opencode at \/skills\/demo-skill/,
-  );
-});
-
-test("assertNoInstalledSkillConflict 未命中时正常返回", async () => {
-  const enumerate = async () => [{ name: "other-skill", location: "/skills/other" }];
-
-  assert.equal(await assertNoInstalledSkillConflict("demo-skill", "/project", enumerate), undefined);
-});
-
-test("assertNoInstalledSkillConflict 在枚举不可用时中止，而不是静默跳过", async () => {
-  const enumerate = async () => null;
-
-  await assert.rejects(
-    assertNoInstalledSkillConflict("demo-skill", "/project", enumerate),
-    /could not enumerate the skills installed in this project/,
-  );
-});
-
 test("parseCliSkillList 从 JSON 数组里取出同名条目位置", () => {
   const stdout = JSON.stringify([
     { name: "demo-skill", location: "/skills/demo" },
@@ -801,13 +794,6 @@ test("findSkillConflictsInList 逐条列出命中位置", () => {
     "unknown location",
   ]);
   assert.deepEqual(findSkillConflictsInList([], "target"), []);
-});
-
-test("skillConflictMessage 点名冲突位置并解释合成技能命名约定", () => {
-  const message = skillConflictMessage("demo-skill", ["/a", "/b"]);
-
-  assert.match(message, /skill "demo-skill" is already available to opencode at \/a, \/b/);
-  assert.match(message, /demo-skill-skill-<id>/);
 });
 
 test("createV2SkillEnumerator 把项目根作为枚举作用域并映射结果", async () => {

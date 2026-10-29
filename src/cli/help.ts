@@ -34,8 +34,11 @@ export const HELP_TEXT = `skill_zh —— 中文 OpenCode 技能创建工具（C
   skill_zh help
   skill_zh new <技能名> [--dir <目录>] [--force]
   skill_zh validate <技能目录> [--strict]
-  skill_zh eval <技能目录> [--runs <次数>] [--workers <并发数>]
-  skill_zh optimize <技能目录> [--iterations <轮数>]
+  skill_zh eval <技能目录> [--runs N] [--workers N] [--timeout 毫秒] [--model provider/model]
+                       [--agent 名称] [--eval-set 路径] [--log-dir 路径] [--no-shadow-guard]
+  skill_zh optimize <技能目录> [--iterations N] [--runs N] [--workers N] [--timeout 毫秒]
+                       [--model provider/model] [--agent 名称] [--eval-set 路径] [--log-dir 路径]
+                       [--no-shadow-guard]
   skill_zh package <技能目录> --out <产物路径>
   skill_zh install [--dry-run] [--force]
 
@@ -53,14 +56,21 @@ export const HELP_TEXT = `skill_zh —— 中文 OpenCode 技能创建工具（C
   skill_zh new api-doc-writer --dir ./skills
   skill_zh validate ./skills/api-doc-writer
   skill_zh eval ./skills/api-doc-writer --runs 3 --workers 4
+  skill_zh eval ./skills/api-doc-writer --eval-set ./evals/eval_set.json --log-dir ./.evals
+  skill_zh eval ./skills/api-doc-writer --no-shadow-guard
   skill_zh optimize ./skills/api-doc-writer --iterations 5
+  skill_zh optimize ./skills/api-doc-writer --iterations 3 --runs 2 --workers 2
   skill_zh package ./skills/api-doc-writer --out ./skills-package/api-doc-writer
   skill_zh install
   skill_zh install --dry-run
   skill_zh install --force
 
 说明：
-  - new / validate 已可用；eval / optimize / package 属 B4、install 属 B5，调用会返回「尚未实现」三段式。
+  - new / validate / eval / optimize 已可用；package 与 install 属 B5，调用会返回「尚未实现」三段式。
+  - eval 默认：--runs 1、--workers 1、--timeout 120000 毫秒、评测集 <技能目录>/eval_set.json、
+    报告目录 <技能目录>/.evals；同名技能默认自动屏蔽（--no-shadow-guard 关闭）。
+  - optimize 默认：--iterations 5、--runs 1、--workers 1、--timeout 120000 毫秒，训练/测试集 6:4 切分，
+    报告根目录 <技能目录>/.evals（每次运行在其下建独立子目录）。
   - 失败一律三段式：错误（哪里不对）→ 改法（可直接照做的命令）→ 可用：skill_zh help。
   - 缺参、路径不存在、参数非法等失败都给出一句可复制执行的改法，例如
     「改法：运行 skill_zh validate ./skills/my-skill」。

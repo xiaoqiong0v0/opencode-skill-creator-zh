@@ -52,6 +52,11 @@ export interface HandlerInput {
   ctx: DispatchContext;
 }
 
-/** 子命令实现签名；尚未实现的 `eval` / `optimize` / `package` 共用一个占位 handler。 */
-export type SubcommandHandler = (input: HandlerInput) => DispatchResult;
+/**
+ * 子命令实现签名。
+ *
+ * 同步实现（`new` / `validate`）直接返回结果；`eval` / `optimize` 需要等待
+ * `opencode run`，返回 Promise，由分发层统一 `await`。
+ */
+export type SubcommandHandler = (input: HandlerInput) => DispatchResult | Promise<DispatchResult>;
 
