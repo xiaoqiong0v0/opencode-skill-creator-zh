@@ -21,6 +21,7 @@ const server: Plugin = async (): Promise<Hooks> => {
   log.loaded();
 
   // 同步注册、后台执行：无冲突且目标不存在/版本不同才写盘，其余只记日志（R6.1-I1..I5）。
+  // 默认自动安装（开箱即用）；`SKILL_ZH_NO_STARTUP_INSTALL=1` 完全跳过，且无论装或跳过都记一条日志。
   scheduleStartupSkillInstall({
     logInfo: (message) => log.info(message),
     logError: (message, error) => log.error(message, error instanceof Error ? error : new Error(String(error))),

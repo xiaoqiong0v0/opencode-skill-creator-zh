@@ -4,7 +4,7 @@
 
 本插件只暴露 **1 个工具** `skill_zh`，入参只有一个 `args` 字符串。工具 description 为 `中文技能工坊：新建、校验、评测、优化并打包 OpenCode 技能`（33 字符），参数细节全部交给 `skill_zh help`。
 
-> 当前状态：B0–B5 完成——7 个子命令均接真实现。相对路径的解析基准见下节「路径解析基准」。
+> 当前状态：B0–B6 完成——7 个子命令均接真实现。相对路径的解析基准见下节「路径解析基准」。
 
 ## 通用约定
 
@@ -61,13 +61,15 @@ skill_zh —— 中文 OpenCode 技能创建工具（CLI 风格单工具）
   validate  校验 SKILL.md 结构与 frontmatter，--strict 把长度/命名提示升级为错误
   eval      跑触发率评测，输出通过率、逐条结果与失败用例
   optimize  按评测失败反复改写 description（训练/测试集 6:4 切分）
-  package   只导出可分发的技能目录（--out 必填）
+  package   只导出白名单内的技能目录（--out 必填，不产出 npm 包）
+  install   把包内技能装到用户级技能目录（默认不覆盖本地改动）
 
 示例：
   skill_zh new api-doc-writer --dir ./skills
   skill_zh validate ./skills/api-doc-writer
   ...
   skill_zh package ./skills/api-doc-writer --out ./skills-package/api-doc-writer
+  skill_zh install --dry-run
 ```
 
 失败示例（未知子命令：恰好三行，改法里列出全部可用子命令）：
@@ -181,7 +183,7 @@ skill_zh —— 中文 OpenCode 技能创建工具（CLI 风格单工具）
 
 ## skill_zh eval
 
-跑触发率评测：按技能目录下的评测集把每条 query 交给被测模型，统计技能是否被选中，输出通过率、逐条结果、失败用例、镜像汇总与报告路径。
+跑触发率评测：按技能目录下的评测集把每条 query 交给被测模型，统计技能是否被选中，输出通过率、逐条结果、失败用例、文本汇总（按 `should_trigger` 分组、重复 query 分组）、镜像汇总与报告路径。本版只输出**文本汇总 + JSON 报告**；HTML 查看器未提供。
 
 | 参数 | 必填 | 默认 | 说明 |
 |---|---|---|---|
@@ -216,6 +218,11 @@ skill_zh —— 中文 OpenCode 技能创建工具（CLI 风格单工具）
 失败用例：
   不应触发却触发（1）
     - 「写一段生日邀请函」 命中 2/2
+汇总：
+  总通过率 0.50（1/2），失败 1 条；触发率均值 0.50 ± 0.71
+  应触发：1 条，通过 1（1.00），失败 0；触发率均值 1.00 ± 0.00
+  不应触发：1 条，通过 0（0.00），失败 1；触发率均值 1.00 ± 0.00
+  重复 query：无
 镜像：3 个条目，链接镜像（跳过 0 项）
 报告：./skills/api-doc-writer/.evals/eval-2026-10-29T10-00-00-000Z-1a2b.json
 下一步：skill_zh optimize ./skills/api-doc-writer --iterations 3（按失败用例改写 description）
@@ -337,8 +344,8 @@ skill_zh —— 中文 OpenCode 技能创建工具（CLI 风格单工具）
 失败示例（模型/CLI 不可用）：
 
 ```text
-错误：无法调用 opencode 执行评测：opencode run exited 1: …
-改法：先确认 opencode CLI 可用、provider 与模型已配置，再运行 skill_zh optimize ./skills/api-doc-writer
+错误：无法调用 opencode 执行评测：子进程启动失败或异常退出
+改法：先确认 opencode CLI 可用、provider 与模型已配置；仍失败时设 SKILL_ZH_DEBUG=1 重跑查看原始报错，再运行 skill_zh optimize ./skills/api-doc-writer
 可用：skill_zh help
 ```
 
@@ -431,7 +438,7 @@ skill_zh package ./skills/api-doc-writer --out ./skills-package/api-doc-writer
 
 ```text
 安装：已安装（0.1.0）→ ~/.config/opencode/skills/opencode-skill-creator-zh
-写入（4）：SKILL.md  agents/analyzer.md  references/schemas.md  templates/eval-review.html
+写入（6）：SKILL.md  agents/analyzer.md  agents/comparator.md  agents/grader.md  references/schemas.md  templates/eval-review.html
 跳过（白名单外）：dist/  test/
 状态：~/.config/opencode/skills/.skill-zh-state/opencode-skill-creator-zh.json（版本、属主清单与备份都在技能目录外）
 下一步：重启 OpenCode 使技能重新加载
@@ -467,7 +474,9 @@ skill_zh package ./skills/api-doc-writer --out ./skills-package/api-doc-writer
 可用：skill_zh help
 ```
 
-排障：`SKILL_ZH_SKILL_SOURCE=<目录>` 可让 install / 启动钩子临时改用指定技能目录（本地开发与测试用）；正常使用不需要设置。`SKILL_ZH_NO_STARTUP_INSTALL=1` 关闭插件启动时的静默安装。
+排障：`SKILL_ZH_SKILL_SOURCE=<目录>` 可让 install / 启动钩子临时改用指定技能目录（本地开发与测试用）；正常使用不需要设置。
+
+插件启动时默认自动安装技能（`~/.config/opencode/skills/opencode-skill-creator-zh/` + `.skill-zh-state/`），开箱即用；每次启动都会记一条日志（「已自动安装技能到 …」或「启动安装跳过：原因」）。设 `SKILL_ZH_NO_STARTUP_INSTALL=1` 可完全跳过启动安装（只跳过插件自己的两处写入，不碰其它技能目录）；关闭后仍可随时用 `skill_zh install` 显式安装。
 
 ## 本版不提供的上游能力
 
@@ -477,4 +486,4 @@ skill_zh package ./skills/api-doc-writer --out ./skills-package/api-doc-writer
 |---|---|
 | gold 样本管理 ×4（增 / 列 / 删 / 取建议） | 实现保留在 `src/lib/`，不暴露；需要时按 `skill/SKILL.md` 的手工流程处理 |
 | 评审查看器 ×3（起 / 停 / 导出静态 HTML） | 同上，手工流程处理 |
-| benchmark 汇总、HTML 报告 ×2 | **并入 `eval` 的输出**，不单独注册工具，也不单独开子命令 |
+| benchmark 汇总、HTML 报告 ×2 | 本版 `eval` 只输出**文本汇总 + JSON 报告**（统计口径复用 `lib/aggregate`）；**HTML 查看器未提供**，不单独注册工具、也不单独开子命令 |

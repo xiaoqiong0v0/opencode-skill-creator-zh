@@ -68,20 +68,20 @@ export function validateSkill(skillPath: string): ValidationResult {
 
   // 先确认文件在不在（大小写不敏感：skill.md 与 SKILL.md 等价）
   if (skillMdPath === null) {
-    return { valid: false, message: "SKILL.md not found" };
+    return { valid: false, message: "未找到 SKILL.md" };
   }
 
   // 开头就把 CRLF（Windows 上 autocrlf 检出）统一成 LF：下面的正则与切分都
   // 假定是 \n，残留的 \r 要么直接判掉合法 frontmatter，要么破坏逐行的键值匹配。
   const content = readFileSync(skillMdPath, "utf-8").replace(/\r\n/g, "\n");
   if (!content.startsWith("---")) {
-    return { valid: false, message: "No YAML frontmatter found" };
+    return { valid: false, message: "缺少 YAML frontmatter（文件第 1 行必须是 ---）" };
   }
 
   // 取出 frontmatter 文本
   const match = content.match(/^---\n([\s\S]*?)\n---/);
   if (!match) {
-    return { valid: false, message: "Invalid frontmatter format" };
+    return { valid: false, message: "frontmatter 格式不正确：找不到结束的 ---" };
   }
 
   const frontmatterText = match[1];
@@ -118,7 +118,7 @@ export function validateSkill(skillPath: string): ValidationResult {
         return {
           valid: false,
           // +2：frontmatter 从文件第 2 行开始（开头 `---` 之后）。
-          message: `Invalid frontmatter value for '${currentKey}' on line ${index + 2}: unquoted values containing ': ' or ending with ':' are invalid YAML and the runtime will drop this skill. Hint: quote the value (e.g. ${currentKey}: "your text here").`,
+          message: `frontmatter 第 ${index + 2} 行的 '${currentKey}' 取值不是合法 YAML：含「: 」或以冒号结尾的值会被运行时丢弃，导致该技能不生效。改法：给取值加引号，例如 ${currentKey}: "你的文本"`,
         };
       }
 
@@ -153,16 +153,16 @@ export function validateSkill(skillPath: string): ValidationResult {
   if (unexpectedKeys.length > 0) {
     return {
       valid: false,
-      message: `Unexpected key(s) in SKILL.md frontmatter: ${unexpectedKeys.sort().join(", ")}. Allowed properties are: ${[...ALLOWED_PROPERTIES].sort().join(", ")}`,
+      message: `frontmatter 含不支持的键：${unexpectedKeys.sort().join("、")}。允许的键：${[...ALLOWED_PROPERTIES].sort().join("、")}`,
     };
   }
 
   // 再查必填字段
   if (!frontmatter["name"]) {
-    return { valid: false, message: "Missing 'name' in frontmatter" };
+    return { valid: false, message: "frontmatter 缺少必填字段 name" };
   }
   if (!frontmatter["description"]) {
-    return { valid: false, message: "Missing 'description' in frontmatter" };
+    return { valid: false, message: "frontmatter 缺少必填字段 description" };
   }
 
   // 校验 name
@@ -171,19 +171,19 @@ export function validateSkill(skillPath: string): ValidationResult {
     if (!/^[a-z0-9-]+$/.test(name)) {
       return {
         valid: false,
-        message: `Name '${name}' should be kebab-case (lowercase letters, digits, and hyphens only)`,
+        message: `name「${name}」不是 kebab-case（只允许小写字母、数字与连字符）`,
       };
     }
     if (name.startsWith("-") || name.endsWith("-") || name.includes("--")) {
       return {
         valid: false,
-        message: `Name '${name}' cannot start/end with hyphen or contain consecutive hyphens`,
+        message: `name「${name}」不能以连字符开头或结尾，也不能含连续连字符`,
       };
     }
     if (name.length > 64) {
       return {
         valid: false,
-        message: `Name is too long (${name.length} characters). Maximum is 64 characters.`,
+        message: `name 过长（${name.length} 字符），上限 64 字符`,
       };
     }
   }
@@ -194,13 +194,13 @@ export function validateSkill(skillPath: string): ValidationResult {
     if (description.includes("<") || description.includes(">")) {
       return {
         valid: false,
-        message: "Description cannot contain angle brackets (< or >)",
+        message: "description 不能含尖括号（< 或 >）",
       };
     }
     if (description.length > 1024) {
       return {
         valid: false,
-        message: `Description is too long (${description.length} characters). Maximum is 1024 characters.`,
+        message: `description 过长（${description.length} 字符），上限 1024 字符`,
       };
     }
   }
@@ -211,10 +211,10 @@ export function validateSkill(skillPath: string): ValidationResult {
     if (compatibility.length > 500) {
       return {
         valid: false,
-        message: `Compatibility is too long (${compatibility.length} characters). Maximum is 500 characters.`,
+        message: `compatibility 过长（${compatibility.length} 字符），上限 500 字符`,
       };
     }
   }
 
-  return { valid: true, message: "Skill is valid!" };
+  return { valid: true, message: "技能校验通过" };
 }

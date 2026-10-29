@@ -456,7 +456,7 @@ test("isAncestorOfExcludedSkill：候选的祖先目录引用被拒绝并给出�
     assert.equal(existsSync(join(evalRoot, "skills")), false);
     assert.deepEqual(findFilesContaining(evalRoot, secret), []);
     assert.equal(warnings.length, 1);
-    assert.match(warnings[0], /containing the tested skill/);
+    assert.match(warnings[0], /包含被测技能/);
     // 无关兄弟仍按相对位置镜像。
     assert.equal(readFileSync(join(evalRoot, "notes.md"), "utf-8"), "UNRELATED_NOTES\n");
   });
@@ -676,7 +676,7 @@ test("父目录 glob 被报告，且绝不把项目外材料拷进来", () => {
 
       assert.equal(warnings.length, 1);
       assert.ok(warnings[0].includes(`../${outsideName}/*.md`));
-      assert.match(warnings[0], /parent directory/);
+      assert.match(warnings[0], /指向父目录/);
       // 只有配置文档进评测根；项目外的材料既没被拷贝，也没被改动。
       assert.deepEqual(readdirSync(evalRoot), ["opencode.json"]);
       assert.equal(readFileSync(join(outside, "a.md"), "utf-8"), "OUTSIDE_RULES\n");
@@ -704,7 +704,7 @@ test("brace 交替被报告为不支持，且一条引用都不镜像", () => {
 
     assert.equal(warnings.length, 1);
     assert.ok(warnings[0].includes("rules/{a,b}.md"));
-    assert.match(warnings[0], /brace alternation/);
+    assert.match(warnings[0], /花括号交替/);
     assert.deepEqual(readdirSync(evalRoot), ["opencode.json"]);
   });
 });
@@ -725,7 +725,7 @@ test("畸形字符类被报告而不是抛出", () => {
 
     assert.equal(warnings.length, 1);
     assert.ok(warnings[0].includes("[z-a]"));
-    assert.match(warnings[0], /malformed glob segment/);
+    assert.match(warnings[0], /写法有误的 glob/);
     assert.deepEqual(readdirSync(evalRoot), ["opencode.json"]);
   });
 });
@@ -747,7 +747,7 @@ test("** 递归仍被报告为不支持的边界", () => {
 
     assert.equal(warnings.length, 1);
     assert.ok(warnings[0].includes("a/**/*.md"));
-    assert.match(warnings[0], /"\*\*" recursion/);
+    assert.match(warnings[0], /"\*\*" 递归/);
     assert.deepEqual(readdirSync(evalRoot), ["opencode.json"]);
   });
 });
@@ -772,10 +772,10 @@ test("parseCliSkillList 对非 JSON / 非数组输出返回空冲突列表", () 
   }
 });
 
-test("parseCliSkillList 丢弃无 name 的条目，缺位置记为 unknown location", () => {
+test("parseCliSkillList 丢弃无 name 的条目，缺位置记为「未知位置」", () => {
   const stdout = JSON.stringify([{ location: "/no-name" }, null, "text", { name: "demo-skill" }]);
 
-  assert.deepEqual(findSkillConflicts(stdout, "demo-skill"), ["unknown location"]);
+  assert.deepEqual(findSkillConflicts(stdout, "demo-skill"), ["未知位置"]);
 });
 
 test("findSkillConflictsInList 逐条列出命中位置", () => {
@@ -788,10 +788,10 @@ test("findSkillConflictsInList 逐条列出命中位置", () => {
       ],
       "target",
     ),
-    ["/a", "unknown location"],
+    ["/a", "未知位置"],
   );
   assert.deepEqual(findSkillConflictsInList([{ name: "target", location: "   " }], "target"), [
-    "unknown location",
+    "未知位置",
   ]);
   assert.deepEqual(findSkillConflictsInList([], "target"), []);
 });

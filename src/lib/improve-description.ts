@@ -16,6 +16,7 @@ import {
   classifyEvalFailures,
   formatFailureDiagnostics,
 } from "./failure-taxonomy.js";
+import { debugLog } from "./debug.js";
 import { buildOpencodeEnv, isFailedProcess, runProcess } from "./process.js";
 import { abortError } from "./run-eval.js";
 
@@ -57,7 +58,7 @@ const TRAILING_MESSAGE = "Process the attached file and follow its instructions.
  * @param timeout 超时秒数（默认 300 秒）
  * @param opts 项目根、超时与调用方取消信号
  * @returns 模型返回的文本：优先用 JSON 事件里的 text 分片拼接，否则退回原始 stdout
- * @throws 取消时抛 `AbortError`；子进程失败时抛带退出码与 stderr 的错误
+ * @throws 取消时抛 `AbortError`；子进程失败时抛带中文摘要（退出码 / 超时）的错误，stderr 只进调试输出
  */
 async function callOpenCode(
   prompt: string,
@@ -145,8 +146,14 @@ async function callOpenCode(
     }
 
     if (isFailedProcess(result)) {
+      // stderr 原文可能带路径或凭据：只在调试开关下输出（debugLog 内部掩码），
+      // 用户侧只看到中文摘要。
+      const detail = result.stderr.trim();
+      if (detail !== "") {
+        debugLog(`[skill_zh:debug] opencode stderr：${detail}`);
+      }
       throw new Error(
-        `opencode run exited ${result.exitCode}\nstderr: ${result.stderr}`,
+        result.timedOut ? "opencode run 超时未结束" : `opencode run 退出码 ${result.exitCode}`,
       );
     }
 
@@ -217,7 +224,7 @@ export interface ImproveDescriptionOptions {
  *
  * @param opts 技能名/正文、当前描述、评测结果、历史、模型、项目根与取消信号
  * @returns 最终采用的描述文本（已去两端引号）
- * @throws 取消时抛 `AbortError`；`opencode run` 失败时抛带退出码与 stderr 的错误
+ * @throws 取消时抛 `AbortError`；`opencode run` 失败时抛带中文摘要（退出码 / 超时）的错误
  */
 export async function improveDescription(
   opts: ImproveDescriptionOptions,

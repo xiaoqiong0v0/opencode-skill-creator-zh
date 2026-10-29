@@ -1193,13 +1193,33 @@ export function installBundledSkill(options: InstallBundledSkillOptions): SkillI
   };
 }
 
+/** 启动自动安装被关闭时使用的环境变量（显式 opt-out）。 */
+export const NO_STARTUP_INSTALL_ENV = "SKILL_ZH_NO_STARTUP_INSTALL";
+
+/**
+ * 启动安装应被跳过的原因。
+ *
+ * 两种情形：① 用户显式设置 `SKILL_ZH_NO_STARTUP_INSTALL=1`；② 跑在 `node --test` 下
+ * （Node 给测试子进程注入 `NODE_TEST_CONTEXT`），测试不该写真实 HOME。
+ *
+ * @param env 环境变量（测试用；缺省 `process.env`）
+ * @returns 跳过原因；不应跳过时为 `null`
+ */
+export function startupInstallSkipReason(env: NodeJS.ProcessEnv = process.env): string | null {
+  if (env[NO_STARTUP_INSTALL_ENV] === "1") {
+    return `已按 ${NO_STARTUP_INSTALL_ENV}=1 关闭启动自动安装`;
+  }
+  if (env.NODE_TEST_CONTEXT !== undefined) return "测试环境（NODE_TEST_CONTEXT）不写盘";
+  return null;
+}
+
 /**
  * 是否禁止启动时静默安装（测试 / 用户显式关闭）。
  *
  * @returns 需要跳过时为 `true`
  */
 export function isStartupInstallDisabled(): boolean {
-  return process.env.NODE_TEST_CONTEXT !== undefined || process.env.SKILL_ZH_NO_STARTUP_INSTALL === "1";
+  return startupInstallSkipReason() !== null;
 }
 
 /** 每个进程只调度一次启动安装。 */
@@ -1217,8 +1237,15 @@ export function scheduleStartupSkillInstall(hooks: {
   logInfo: (message: string) => void;
   logError: (message: string, error: unknown) => void;
 }): void {
-  if (startupInstallScheduled || isStartupInstallDisabled()) return;
+  if (startupInstallScheduled) return;
   startupInstallScheduled = true;
+
+  // 关闭时必须留下一条日志：用户要能确认「没写盘」是主动关闭而不是安装失败。
+  const skipReason = startupInstallSkipReason();
+  if (skipReason !== null) {
+    hooks.logInfo(`启动安装跳过：${skipReason}`);
+    return;
+  }
 
   setImmediate(() => {
     try {
@@ -1246,7 +1273,7 @@ export function scheduleStartupSkillInstall(hooks: {
       }
 
       const result = installBundledSkill({ sourceDir, skillsRoot, force: false });
-      hooks.logInfo(`启动静默安装完成：${toDisplayPath(result.targetDir)}（${result.packageVersion}）`);
+      hooks.logInfo(`已自动安装技能到 ${toDisplayPath(result.targetDir)}（${result.packageVersion}）`);
     } catch (error) {
       hooks.logError("启动静默安装失败", error);
     }

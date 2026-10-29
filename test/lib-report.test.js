@@ -78,15 +78,15 @@ const FULL_SAMPLE = {
 test("渲染标题、概要字段、表头极性列与每行分数", () => {
   const html = generateHtml(FULL_SAMPLE);
 
-  assert.ok(html.includes("<title>Skill Description Optimization</title>"));
-  assert.ok(html.includes("<h1>Skill Description Optimization</h1>"));
-  assert.ok(html.includes("<p><strong>Original:</strong> old &lt;desc&gt;</p>"));
-  assert.ok(html.includes('<p class="best"><strong>Best:</strong> new &amp; best</p>'));
-  // best_test_score 为真时标注 (test)，否则标 (train)
-  assert.ok(html.includes("<p><strong>Best Score:</strong> 3/3 (test)</p>"));
+  assert.ok(html.includes("<title>技能描述优化</title>"));
+  assert.ok(html.includes("<h1>技能描述优化</h1>"));
+  assert.ok(html.includes("<p><strong>原始描述：</strong> old &lt;desc&gt;</p>"));
+  assert.ok(html.includes('<p class="best"><strong>最佳描述：</strong> new &amp; best</p>'));
+  // best_test_score 为真时标注（测试集），否则标（训练集）
+  assert.ok(html.includes("<p><strong>最佳分数：</strong> 3/3 （测试集）</p>"));
   assert.ok(
     html.includes(
-      "<p><strong>Iterations:</strong> 2 | <strong>Train:</strong> 2 | <strong>Test:</strong> 1</p>",
+      "<p><strong>迭代：</strong> 2 | <strong>训练：</strong> 2 | <strong>测试：</strong> 1</p>",
     ),
   );
 
@@ -137,7 +137,7 @@ test("query、描述与技能名都经过 HTML 转义", () => {
   assert.ok(html.includes(escaped));
   // 原始未经转义的串一次都不该出现
   assert.ok(!html.includes(nasty));
-  assert.ok(html.includes("sk &lt;x&gt; &quot;q&quot; \u2014 Skill Description Optimization"));
+  assert.ok(html.includes("sk &lt;x&gt; &quot;q&quot; \u2014 技能描述优化"));
 });
 
 test("autoRefresh 开关决定是否插入 5 秒刷新标签", () => {

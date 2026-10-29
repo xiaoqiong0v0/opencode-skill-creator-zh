@@ -2,7 +2,7 @@
 
 本文是**需求与验收口径的唯一出处**。实施批次见 [ROADMAP.md](ROADMAP.md)，编码规范见 [CONVENTIONS.md](CONVENTIONS.md)，用法定稿见 [../README.md](../README.md)。
 
-> 当前状态：B0–B5 已完成——骨架、单工具壳、`new` / `validate`、`eval` / `optimize`、`package` / `install` 均已落地；B6 做技能正文与文案收尾。文中行为均由测试或门禁守住，验收项见 §4。
+> 当前状态：B0–B6 **全部完成**——骨架、单工具壳、`new` / `validate`、`eval` / `optimize`、`package` / `install`、技能正文与文案口径均已落地；发布链路未做（`npm publish` 由用户手动执行）。文中行为均由测试或门禁守住，验收项见 §4。
 
 ## 1. 目标
 
@@ -18,7 +18,7 @@
 | 仓库 | `https://github.com/xiaoqiong0v0/opencode-skill-creator-zh` |
 | 构建 | `tsc` 直出 `dist/`；`prebuild` 清 `dist/`；`dist/` 不入库 |
 | 测试 | `node --test --experimental-test-module-mocks`（自动发现 `test/**/*.test.js`；该 flag 要求 **Node ≥ 22.3**，`engines.node` 必须同步，见 R7；对编译产物跑，测试文件为 `.js`） |
-| 包内容 | `files: ["dist", "skill", "README.md"]`；包内技能只有 `skill/` 一份，与 `dist/` 平级 |
+| 包内容 | `files: ["dist", "skill", "templates", "README.md"]`（`templates` 是 `new` 生成骨架的运行必需）；包内技能只有 `skill/` 一份，与 `dist/` 平级 |
 | 目录 | `src/`（含 `src/lib/`、`src/cli/`）、`test/`、`docs/`、`scripts/`、`templates/`、`skill/` |
 
 ## 3. 需求
@@ -83,7 +83,7 @@
 
 配套约束（缺一不可）：
 
-1. `files` 只含 `dist`、`skill`、`README.md`，源码与测试不入包；
+1. `files` 只含 `dist`、`skill`、`templates`、`README.md`，源码与测试不入包；
 2. 技能目录名 = 插件 id = frontmatter `name`，三者一致才能共存且被 OpenCode 发现；
 3. 安装/升级只写目标技能目录与安装状态目录，删除与覆盖限定在这两处内，不触碰其它技能目录（明细见 `R6.1` 的 I1/I2）；
 4. 升级时保留用户对 `SKILL.md` 的改动（备份策略见 [installation.md](installation.md#升级)）。
@@ -133,7 +133,7 @@
 | R3 | 断言 `HELP_TEXT` 含 7 个子命令名 + 7 条 `skill_zh <子命令>` 示例 |
 | R4 | `[...TOOL_DESCRIPTION].length <= 60`，且文案与定稿值一致 |
 | R5 | 触发「未知子命令 / 缺参 / 路径不存在 / 非法参数值」4 类失败，输出满足三段式 |
-| R6 | `npm pack --dry-run` 列出 `dist/`、`skill/`、`README.md`；安装后技能目录名与插件 id 一致；与上游英文技能同时安装不冲突 |
+| R6 | `npm pack --dry-run` 列出 `dist/`、`skill/`、`templates/`、`README.md`；安装后技能目录名与插件 id 一致；与上游英文技能同时安装不冲突 |
 | R6.1-I1 | 单测（`lib-skill-install` / `cli-install`）：源目录含 `dist/`/`bin/`/`test/` 时，安装后的技能目录文件集合 = 白名单集合（快照比对）；`skill.md` / `AGENTS/` 大小写变体归一 |
 | R6.1-I2 | 单测：安装后技能目录内无点开头条目与 `*.user-backup`；`<目标根>/.skill-zh-state/opencode-skill-creator-zh.json` 存在且清掉旧版元数据 |
 | R6.1-I3 | 单测（`lib-install-conflict`）：`.claude` / `.agents` / 项目级各命中一次；项目目录逐层、嵌套 `SKILL.md`、frontmatter name、`skills.paths` 生效顺序；环境变量关闭判定正确；安装输出点名路径且探测目录哈希前后一致 |
@@ -160,5 +160,5 @@
 - **不做英文版**：英文由上游维护，本仓只交付中文。
 - **不改 OpenCode 的技能加载 / 发现机制**：技能落盘位置与加载规则沿用平台约定。
 - **不重写上游已验证逻辑**：`src/lib/` 只做迁入与接线，不重构算法；确需改动须在 `docs/changes/` 留痕。
-- **不注册 9 个非核心能力**：gold 样本管理（4 个）与评审查看器（3 个：起 / 停 / 导出）共 7 个不注册为工具、实现仍保留在 `src/lib/`；**benchmark 汇总与 HTML 报告**这 2 项并入 `eval` 的输出，不单独注册工具，也不单独开子命令。
+- **不注册 9 个非核心能力**：gold 样本管理（4 个）与评审查看器（3 个：起 / 停 / 导出）共 7 个不注册为工具、实现仍保留在 `src/lib/`；**benchmark 汇总与 HTML 报告**这 2 项不单独注册工具、也不单独开子命令——本版 `eval` 只输出**文本汇总 + JSON 报告**，**HTML 查看器未提供**。
 - **不做 V2 入口**：只提供 V1 `export default { id, server }`。

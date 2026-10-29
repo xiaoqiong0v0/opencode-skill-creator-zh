@@ -84,7 +84,7 @@ description 决定技能会不会被调用，是**唯一触发依据**：必须�
 硬门禁：每个 eval 必须有成对分支输出（with_skill + 基线）才能进评审；缺对时除非用户明确接受，不继续。
 
 1. **评分**：按 `agents/grader.md` 派 grader 子代理（或少量内联评分），逐断言对照 transcript 与产物判定，写各 run 目录的 `grading.json`。字段名必须是 `text`/`passed`/`evidence`（下游一律按这三个名字读，改名会让已有产物对不上）。可编程检查的断言写脚本判定，不肉眼估。
-2. **汇总**：本版未单独提供汇总工具——`skill_zh eval <技能目录>` 的输出已含通过率、逐条结果与失败用例，报告落在 `<技能目录>/.evals/` 下的 JSON；需要 `benchmark.json`/`benchmark.md` 时按 `references/schemas.md` 的字段手工整理（各配置的 pass_rate、时间、token，均值±标准差与差值）。
+2. **汇总**：本版未单独提供汇总工具——`skill_zh eval <技能目录>` 的输出已含通过率、逐条结果、失败用例与文本汇总（总通过率、按 `should_trigger` 分组、重复 query 分组），报告落在 `<技能目录>/.evals/` 下的 JSON；需要 `benchmark.json`/`benchmark.md` 时按 `references/schemas.md` 的字段手工整理（各配置的 pass_rate、时间、token，均值±标准差与差值）。
 3. **分析师过一遍**：按 `agents/analyzer.md`「分析 Benchmark 结果」一节，找出聚合数字掩盖的模式（两边都恒过的无效断言、高方差疑似 flaky、时间/token 换收益）。
 4. **人工评审**：本版未提供评审查看器（起 / 停 / 导出静态 HTML 都不注册为工具，`templates/eval-review.html` 随包但未接线）。需要人工评审时按本节评分标准逐条记下各 run 的产物观感与量化对比，汇总成 `feedback.json` 放回 workspace；不跑工具、也不自己另写评审页面。
 5. 告诉用户怎么看、看完回来告诉你。
@@ -137,7 +137,7 @@ description 决定技能会不会被调用，是**唯一触发依据**：必须�
 | `skill_zh package <技能目录> --out <产物路径>` | 只导出可分发的技能目录 |
 | `skill_zh install [--dry-run] [--force] [--dir <目标根>]` | 把包内技能装到用户级技能目录 |
 
-本版**未注册**的上游能力（不要按旧名调用）：benchmark 汇总与 HTML 报告（已并入 `skill_zh eval` 的输出与 `.evals/` 报告）；评审查看器的起 / 停 / 导出静态 HTML（`templates/eval-review.html` 随包但未接线，需要人工评审时按第 4.5 节手工记录）；gold 样本管理（增 / 列 / 删 / 取建议）——如有需要，单独记录在正文的参考示例里。
+本版**未注册**的上游能力（不要按旧名调用）：benchmark 汇总与 HTML 报告——本版只由 `skill_zh eval` 输出**文本汇总 + JSON 报告**，**HTML 查看器未提供**；评审查看器的起 / 停 / 导出静态 HTML（`templates/eval-review.html` 随包但未接线，需要人工评审时按第 4.5 节手工记录）；gold 样本管理（增 / 列 / 删 / 取建议）——如有需要，单独记录在正文的参考示例里。
 
 ## 9. 打包自检清单
 

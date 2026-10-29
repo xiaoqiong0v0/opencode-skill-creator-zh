@@ -121,3 +121,19 @@
 **现在**：I3 补「`directory` → `worktree` 逐层 + 任意层级 + 目录名/frontmatter name + 外部 → config → paths 生效顺序」；§4 的 I3 验收同步；`validate` 明确文件名不区分大小写（`skill.md` 等价），与安装器 I1 口径统一。
 
 **为什么**：原实现只探项目单层且只看目录名，会漏掉真实会被加载的同名技能；两处大小写口径不一致会让「安装接受、校验拒绝」变成假失败。
+
+## `files` 口径补 `templates`（终审修复）
+
+**原来**：§2 架构表写 `files: ["dist", "skill", "README.md"]`；R6 配套约束 1 写「`files` 只含 `dist`、`skill`、`README.md`」；§4 的 R6 验收行写 `npm pack --dry-run` 列出 `dist/`、`skill/`、`README.md`。
+
+**现在**：三处统一为 `dist`、`skill`、`templates`、`README.md`，并注明 `templates/` 是 `new` 生成骨架的运行必需。
+
+**为什么**：`package.json` 在 B3 已把 `templates` 加入 `files`——`new` 从包内读模板，不入包则安装后该子命令直接失败。需求口径若少这一项，验收就会把「正确的包」判成多余内容。
+
+## 状态行补 B6 完成（终审修复）
+
+**原来**：开头状态行写「B0–B5 已完成——…；B6 做技能正文与文案收尾」。
+
+**现在**：改为「B0–B6 **全部完成**——…；发布链路未做（`npm publish` 由用户手动执行）」。
+
+**为什么**：B6 的验收（`skill/` 下旧工具名零命中、7 子命令与 `HELP_TEXT` 一致）已满足，状态行仍把 B6 写成待做，会让需求页与实现页对不上。

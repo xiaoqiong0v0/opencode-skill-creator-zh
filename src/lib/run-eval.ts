@@ -33,7 +33,7 @@ import { dirname, isAbsolute, join, parse, relative, resolve, sep } from "node:p
 
 import { parse as parseJsonc } from "jsonc-parser";
 
-import { debugLog } from "./debug.js";
+import { debugLog, logErrorSummary } from "./debug.js";
 import { buildOpencodeEnv, isFailedProcess, runProcess } from "./process.js";
 import type { RunProcessResult } from "./process.js";
 
@@ -67,7 +67,7 @@ type MirrorScope = "config" | "skill";
  * @param message 错误文案
  * @returns `name` 为 `AbortError` 的错误对象
  */
-export function abortError(message = "skill evaluation aborted by the caller"): Error {
+export function abortError(message = "评测已被调用方取消"): Error {
   const error = new Error(message);
   error.name = "AbortError";
   return error;
@@ -84,6 +84,37 @@ export function isAbortError(error: unknown): boolean {
     error instanceof Error &&
     (error.name === "AbortError" || (error as { code?: string }).code === "ABORT_ERR")
   );
+}
+
+/** 可安全展示的失败摘要（只由本模块自造，不含路径、凭据或子进程原文）。 */
+interface SummarizableFailure {
+  /** 中文摘要，供默认日志使用。 */
+  skillZhSummary?: string;
+}
+
+/**
+ * 构造一次 query 失败，并挂上可安全展示的中文摘要。
+ *
+ * 摘要只用于 stderr 的一行告警；原始异常仍随 `cause` 传给调试输出（掩码后）。
+ *
+ * @param message 中文摘要（同时作为 error.message）
+ * @returns 带 `skillZhSummary` 的错误
+ */
+function queryFailure(message: string): Error {
+  const error = new Error(message) as Error & SummarizableFailure;
+  error.skillZhSummary = message;
+  return error;
+}
+
+/**
+ * 取一次 query 失败的可展示原因；缺摘要时返回「未知错误」。
+ *
+ * @param error 捕获到的异常
+ * @returns 中文摘要
+ */
+function describeQueryFailure(error: unknown): string {
+  const summary = (error as SummarizableFailure | null | undefined)?.skillZhSummary;
+  return typeof summary === "string" && summary !== "" ? summary : "未知错误";
 }
 
 // ---------------------------------------------------------------------------
@@ -131,7 +162,7 @@ export interface EvalOutput {
 
 /** 所有 should-trigger 条目都 0 触发且无运行错误时给出的提示。 */
 const ALL_ZERO_WARNING =
-  "All should-trigger queries produced 0 triggers with no run errors. Check that trigger evals are using an agent that exposes skill tool events, such as the build agent.";
+  "所有应触发的 query 都是 0 次触发且没有运行错误。请确认评测所用 agent 暴露了技能工具事件（例如 build agent）。";
 
 /**
  * 构造 `opencode run` 的参数列表。
@@ -225,7 +256,7 @@ function parseCliSkillList(stdoutText: string): EnumeratedSkill[] | null {
  *
  * @param skills 已安装技能列表
  * @param skillName 被测技能的基础名
- * @returns 命中位置列表；位置缺失时为 `"unknown location"`
+ * @returns 命中位置列表；位置缺失时为 `"未知位置"`
  */
 export function findSkillConflictsInList(
   skills: readonly EnumeratedSkill[],
@@ -236,7 +267,7 @@ export function findSkillConflictsInList(
     .map((entry) =>
       typeof entry.location === "string" && entry.location.trim()
         ? entry.location
-        : "unknown location",
+        : "未知位置",
     );
 }
 
@@ -841,19 +872,19 @@ function expandConfigGlob(projectRoot: string, pattern: string): string[] {
   if (segments.some((segment) => segment === "..")) {
     // 越出项目根的引用无法镜像成兄弟节点。报出来，而不是悄悄丢掉被引用的文件。
     console.error(
-      `skill_eval: instruction pattern "${pattern}" references a parent directory (".."), which the isolated eval-root mirror cannot mirror; move the reference inside the project if eval runs must see it.`,
+      `skill_eval：指令引用「${pattern}」指向父目录（".."），隔离评测根无法镜像该引用；如果评测运行必须看到它，请把引用移到项目内。`,
     );
     return [];
   }
   if (segments.some((segment) => segment.includes("{") || segment.includes("}"))) {
     console.error(
-      `skill_eval: instruction pattern "${pattern}" uses brace alternation, which the isolated eval-root mirror does not support; list one explicit file or glob per entry such as "dir/a.md", "dir/b.md", or "dir/*.md".`,
+      `skill_eval：指令引用「${pattern}」使用了花括号交替写法，隔离评测根不支持；请改为每条一个具体文件或单层 glob，例如 "dir/a.md"、"dir/b.md"、"dir/*.md"。`,
     );
     return [];
   }
   if (segments.some((segment) => segment.includes("**"))) {
     console.error(
-      `skill_eval: instruction pattern "${pattern}" uses "**" recursion, which the isolated eval-root mirror does not support; list explicit files or a single-directory glob such as "dir/*.md".`,
+      `skill_eval：指令引用「${pattern}」使用了 "**" 递归，隔离评测根不支持；请改为具体文件或单层 glob，例如 "dir/*.md"。`,
     );
     return [];
   }
@@ -878,8 +909,11 @@ function expandConfigGlob(projectRoot: string, pattern: string): string[] {
           matcher = globSegmentToRegExp(segment);
         } catch (error) {
           // 畸形 glob（如 `[z-a]`、未闭合的 `[`）不能抛出镜像流程，也不能悄悄展开为空。
+          debugLog(
+            `[skill_zh:debug] glob 段解析失败：${segment}（${error instanceof Error ? error.message : String(error)}）`,
+          );
           console.error(
-            `skill_eval: instruction pattern "${pattern}" contains an unsupported or malformed glob segment "${segment}" (${error instanceof Error ? error.message : String(error)}); the reference is not mirrored into the isolated eval root.`,
+            `skill_eval：指令引用「${pattern}」的路径段「${segment}」含不支持或写法有误的 glob（例如未闭合或非法的字符类），该引用不会镜像进隔离评测根。`,
           );
           return [];
         }
@@ -979,7 +1013,7 @@ function expandConfigReference(projectRoot: string, reference: string): string[]
       // 例如 `../shared/rules.md` —— 无法在不越出评测根的前提下镜像成兄弟节点。
       // 报出来，而不是悄悄丢掉。
       console.error(
-        `skill_eval: instruction reference "${reference}" resolves outside the project root and is not mirrored into the isolated eval root; move it inside the project if eval runs must see it.`,
+        `skill_eval：指令引用「${reference}」解析到项目根之外，不会镜像进隔离评测根；如果评测运行必须看到它，请把引用移到项目内。`,
       );
       continue;
     }
@@ -1026,7 +1060,7 @@ function mirrorRootConfigDocuments(
         if (isWithinExcludedSkill(excludedSkillPath, absolute)) continue;
         if (isAncestorOfExcludedSkill(excludedSkillPath, absolute)) {
           console.error(
-            `skill_eval: instruction reference "${reference}" resolves to a directory containing the tested skill; the isolated eval-root mirror refuses to copy that parent tree (it would reintroduce the skill under test). Reference the specific file instead.`,
+            `skill_eval：指令引用「${reference}」指向包含被测技能的目录，隔离评测根拒绝拷贝该父目录（会把被测技能带回来）；请改为引用具体文件。`,
           );
           continue;
         }
@@ -1147,7 +1181,7 @@ async function runSingleQuery(
 ): Promise<boolean> {
   if (!SKILL_NAME_RE.test(skillName)) {
     throw new Error(
-      `Invalid skill name "${skillName}". Expected kebab-case (lowercase letters, numbers, and hyphens only).`,
+      `技能名「${skillName}」不合法：只允许小写字母、数字与连字符（kebab-case）。`,
     );
   }
 
@@ -1272,10 +1306,12 @@ async function runSingleQuery(
 
     if (isFailedProcess(result)) {
       const cleanedStderr = result.stderr.trim();
-      throw new Error(
-        cleanedStderr
-          ? `opencode run exited ${result.exitCode}: ${cleanedStderr}`
-          : `opencode run exited ${result.exitCode}`,
+      // stderr 原文可能带路径或凭据：不进错误消息，只在调试开关下打印（debugLog 内部掩码）。
+      if (cleanedStderr !== "") {
+        debugLog(`[skill_zh:debug] opencode stderr：${cleanedStderr}`);
+      }
+      throw queryFailure(
+        result.timedOut ? "opencode run 超时未结束" : `opencode run 退出码 ${result.exitCode}`,
       );
     }
 
@@ -1712,7 +1748,10 @@ export async function runEval(opts: RunEvalOptions): Promise<EvalOutput> {
           abortedDuringRun = true;
           return;
         }
-        console.error(`Warning: query failed: ${e}`);
+        logErrorSummary(
+          `警告：有 query 运行失败（${describeQueryFailure(e)}），本次运行按未触发计`,
+          e,
+        );
         jobResults.push({
           itemIndex: job.itemIndex,
           triggered: false,

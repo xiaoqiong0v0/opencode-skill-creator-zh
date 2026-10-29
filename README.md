@@ -2,7 +2,7 @@
 
 把 [antongulin/opencode-skill-creator](https://github.com/antongulin/opencode-skill-creator) 改写成**中文 + 单 CLI 工具**的 OpenCode 插件：一个工具、一个 `args` 字符串、一套中文帮助与错误文案。
 
-> 当前状态：**仅文档层**。`src/` 尚未创建，除 `skill/`（随包分发的技能目录）外没有可执行代码；本文所有行为描述均为**目标行为**，落地批次见 [docs/ROADMAP.md](docs/ROADMAP.md)。
+> 当前状态：**B0–B6 全部完成**，7 个子命令均已可用，`npm test` 可跑（275 例全绿）。**发布链路尚未做**：发到 npm 由用户手动执行 `npm publish`，包尚未发布。落地批次与实测结论见 [docs/ROADMAP.md](docs/ROADMAP.md)。
 
 ## 是什么
 
@@ -67,6 +67,7 @@ npm i -g @xiaoqiong0v0/opencode-skill-creator-zh
 | `eval` | 跑触发率评测，给通过率、失败用例与汇总数据 | `skill_zh eval ./skills/api-doc-writer --runs 3 --workers 4` |
 | `optimize` | 按评测失败迭代改写 description（训练/测试集切分） | `skill_zh optimize ./skills/api-doc-writer --iterations 5` |
 | `package` | 只导出可分发技能目录（`--out` 必填；npm 发布由用户手动执行） | `skill_zh package ./skills/api-doc-writer --out ./skills-package/api-doc-writer` |
+| `install` | 把包内 `skill/` 装到用户级技能目录（`--dry-run` 只探测不写盘；`--force` 才覆盖本地改过的 `SKILL.md`；`--dir` 改目标根） | `skill_zh install [--dry-run] [--force] [--dir <目标根>]` |
 
 逐个子命令的参数、输出示例与失败示例见 [docs/tools.md](docs/tools.md)。
 
@@ -78,8 +79,8 @@ npm test           # node --test --experimental-test-module-mocks（要求 Node 
 npm run typecheck  # tsc --noEmit
 ```
 
-- `dist/` 不入库（`.gitignore` 已忽略），发布产物只有 `dist/`、`skill/`、`README.md` 三部分。
-- 上述命令在 **B1（工程骨架）** 落地后才可运行；当前仓库没有 `package.json`、`tsconfig.json`、`src/`。
+- `dist/` 不入库（`.gitignore` 已忽略），发布产物只有 `dist/`、`skill/`、`templates/`、`README.md` 四部分（`templates/` 是 `new` 生成骨架的运行必需）。
+- 上述命令在本仓当前可直接运行（要求 Node ≥ 22.3）；`npm test` 275 例全绿。
 - 编码规范见 [docs/CONVENTIONS.md](docs/CONVENTIONS.md)，需求与验收口径见 [docs/SPEC.md](docs/SPEC.md)。
 
 ## 与上游区别
@@ -92,7 +93,7 @@ npm run typecheck  # tsc --noEmit
 | 入参形态 | 每个子命令一套 typed args | 单 `args: string` |
 | 构建 | bun 打包脚本产出单文件 | `tsc` 直出 `dist/`，`node --test` 跑测试 |
 | 技能分发 | 启动时安装随包技能到用户级目录 | 保留入包分发，目录名与本包一致（`-zh` 后缀） |
-| 非核心能力 | 另含 gold ×4、review ×3 共 7 个工具，以及 benchmark 汇总、HTML 报告 2 个工具（合计 9 项） | **这 9 项不注册为工具**：gold / review 的 7 项实现保留在 `src/lib/`，benchmark 汇总与 HTML 报告**并入 `eval` 的输出** |
+| 非核心能力 | 另含 gold ×4、review ×3 共 7 个工具，以及 benchmark 汇总、HTML 报告 2 个工具（合计 9 项） | **这 9 项不注册为工具**：gold / review 的 7 项实现保留在 `src/lib/`；benchmark 汇总与 HTML 报告不单独注册、也不单独开子命令——本版 `eval` 只输出**文本汇总 + JSON 报告**，**HTML 查看器未提供** |
 | 包名 / 版本 | `opencode-skill-creator` | `@xiaoqiong0v0/opencode-skill-creator-zh`，独立版本线 |
 
 未改动：`src/lib/` 承接的上游执行逻辑（校验、评测、迭代改写、报告、安装器），本版只做接线与中文化，不重写已验证算法。

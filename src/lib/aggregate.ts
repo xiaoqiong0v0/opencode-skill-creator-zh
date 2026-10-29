@@ -1,8 +1,9 @@
 /**
- * 基准（benchmark）汇总：从运行目录里读 `grading.json`，算出各配置的统计与差异。
+ * 汇总：benchmark 目录的统计与差异，以及触发率评测（`eval`）的文本汇总。
  *
- * 迁自上游 `plugin/lib/aggregate.ts`（基线 `d4383924`），移植自上游 Python 脚本
- * `scripts/aggregate_benchmark.py`；行为保持不变。
+ * benchmark 部分迁自上游 `plugin/lib/aggregate.ts`（基线 `d4383924`），移植自上游 Python
+ * 脚本 `scripts/aggregate_benchmark.py`；行为保持不变。`eval` 汇总（`summarizeEvalResults`
+ * / `formatEvalSummary`）复用同一套统计口径（`calculateStats`），避免两处各算一套。
  *
  * 支持两种目录布局：
  *   - 工作区布局：<dir>/eval-N/{with_skill,without_skill}/run-N/grading.json
@@ -11,6 +12,8 @@
 
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
+
+import { logErrorSummary } from "./debug.js";
 
 // ---------------------------------------------------------------------------
 // 类型
@@ -33,7 +36,7 @@ interface RunResult {
 }
 
 /** 一组数值的四项统计，数值均四舍五入到 4 位小数。 */
-interface Stats {
+export interface Stats {
   mean: number;
   stddev: number;
   min: number;
@@ -262,9 +265,7 @@ function loadRunResults(benchmarkDir: string): LoadResultsOutput {
   } else if (sortedDirs(benchmarkDir, /^eval-/).length > 0) {
     searchDir = benchmarkDir;
   } else {
-    console.error(
-      `No eval directories found in ${benchmarkDir} or ${runsDir}`,
-    );
+    console.error(`未在 ${benchmarkDir} 或 ${runsDir} 找到任何 eval 目录`);
     return { results: {}, evalIds: [] };
   }
 
@@ -306,7 +307,7 @@ function loadRunResults(benchmarkDir: string): LoadResultsOutput {
           10,
         );
         if (!Number.isFinite(parsedRunNumber)) {
-          console.error(`Warning: Invalid run directory name: ${runDir}`);
+          console.error(`警告：run 目录名不合规，已跳过：${runDir}`);
           continue;
         }
 
@@ -314,7 +315,7 @@ function loadRunResults(benchmarkDir: string): LoadResultsOutput {
         const gradingFile = join(runDir, "grading.json");
 
         if (!existsSync(gradingFile)) {
-          console.error(`Warning: grading.json not found in ${runDir}`);
+          console.error(`警告：缺少 grading.json，已跳过：${runDir}`);
           continue;
         }
 
@@ -322,7 +323,7 @@ function loadRunResults(benchmarkDir: string): LoadResultsOutput {
         try {
           grading = JSON.parse(readFileSync(gradingFile, "utf-8")) as GradingFile;
         } catch (error) {
-          console.error(`Warning: Invalid JSON in ${gradingFile}: ${String(error)}`);
+          logErrorSummary(`警告：grading.json 不是合法 JSON，已跳过：${gradingFile}`, error);
           continue;
         }
 
@@ -368,7 +369,7 @@ function loadRunResults(benchmarkDir: string): LoadResultsOutput {
         for (const exp of result.expectations) {
           if (!("text" in exp) || !("passed" in exp)) {
             console.error(
-              `Warning: expectation in ${gradingFile} missing required fields (text, passed, evidence)`,
+              `警告：${gradingFile} 里的 expectation 缺必填字段（text、passed、evidence）`,
             );
           }
         }
@@ -524,6 +525,135 @@ export function generateBenchmark(
     run_summary: runSummary,
     notes: [],
   };
+}
+
+/**
+ * 触发率评测的一行结果（`EvalResultItem` 的最小子集，直接传入即可）。
+ */
+export interface EvalSummaryRow {
+  query: string;
+  should_trigger: boolean;
+  trigger_rate: number;
+  pass: boolean;
+}
+
+/** 按 `should_trigger` 分组的汇总块。 */
+export interface EvalSummaryGroup {
+  /** 该组期望是否触发。 */
+  should_trigger: boolean;
+  /** 中文组名。 */
+  label: string;
+  total: number;
+  passed: number;
+  failed: number;
+  /** 该组通过率（0–1）。 */
+  pass_rate: number;
+  /** 该组逐条触发率的统计（复用 benchmark 的均值/标准差口径）。 */
+  trigger_rate: Stats;
+}
+
+/** 重复 query 分组。 */
+export interface EvalDuplicateGroup {
+  query: string;
+  total: number;
+  passed: number;
+}
+
+/** 触发率评测的文本汇总数据。 */
+export interface EvalSummary {
+  total: number;
+  passed: number;
+  failed: number;
+  /** 总通过率（0–1）。 */
+  pass_rate: number;
+  /** 全部条目触发率的统计。 */
+  trigger_rate: Stats;
+  groups: EvalSummaryGroup[];
+  duplicates: EvalDuplicateGroup[];
+}
+
+/** 两个极性分组的固定顺序与中文名。 */
+const EVAL_GROUP_LABELS: ReadonlyArray<readonly [boolean, string]> = [
+  [true, "应触发"],
+  [false, "不应触发"],
+];
+
+/**
+ * 汇总一轮触发率评测的结果。
+ *
+ * 统计口径与 benchmark 汇总共用 `calculateStats`（均值 / 标准差 / 最值），不在这里另算。
+ *
+ * @param rows 逐条评测结果（按评测集顺序；重复 query 各自独立）
+ * @returns 总通过率、按极性分组、重复 query 分组
+ */
+export function summarizeEvalResults(rows: readonly EvalSummaryRow[]): EvalSummary {
+  const total = rows.length;
+  const passed = rows.filter((row) => row.pass).length;
+
+  const groups: EvalSummaryGroup[] = EVAL_GROUP_LABELS.map(([shouldTrigger, label]) => {
+    const subset = rows.filter((row) => row.should_trigger === shouldTrigger);
+    const groupPassed = subset.filter((row) => row.pass).length;
+    return {
+      should_trigger: shouldTrigger,
+      label,
+      total: subset.length,
+      passed: groupPassed,
+      failed: subset.length - groupPassed,
+      pass_rate: subset.length > 0 ? groupPassed / subset.length : 0,
+      trigger_rate: calculateStats(subset.map((row) => row.trigger_rate)),
+    };
+  });
+
+  // 重复 query 按「首次出现顺序」分组，便于用户定位评测集里写重的条目。
+  const byQuery = new Map<string, { total: number; passed: number }>();
+  for (const row of rows) {
+    const entry = byQuery.get(row.query) ?? { total: 0, passed: 0 };
+    entry.total += 1;
+    if (row.pass) entry.passed += 1;
+    byQuery.set(row.query, entry);
+  }
+  const duplicates: EvalDuplicateGroup[] = [...byQuery.entries()]
+    .filter(([, entry]) => entry.total > 1)
+    .map(([query, entry]) => ({ query, total: entry.total, passed: entry.passed }));
+
+  return {
+    total,
+    passed,
+    failed: total - passed,
+    pass_rate: total > 0 ? passed / total : 0,
+    trigger_rate: calculateStats(rows.map((row) => row.trigger_rate)),
+    groups,
+    duplicates,
+  };
+}
+
+/**
+ * 把评测汇总渲染成中文文本行（`eval` 输出用）。
+ *
+ * @param summary `summarizeEvalResults` 的产物
+ * @returns 以「汇总：」开头的文本行
+ */
+export function formatEvalSummary(summary: EvalSummary): string[] {
+  const rate = (value: number): string => value.toFixed(2);
+  const stats = (value: Stats): string => `${rate(value.mean)} ± ${rate(value.stddev)}`;
+  const lines = [
+    "汇总：",
+    `  总通过率 ${rate(summary.pass_rate)}（${summary.passed}/${summary.total}），失败 ${summary.failed} 条；触发率均值 ${stats(summary.trigger_rate)}`,
+  ];
+  for (const group of summary.groups) {
+    lines.push(
+      `  ${group.label}：${group.total} 条，通过 ${group.passed}（${rate(group.pass_rate)}），失败 ${group.failed}；触发率均值 ${stats(group.trigger_rate)}`,
+    );
+  }
+  if (summary.duplicates.length > 0) {
+    const detail = summary.duplicates
+      .map((group) => `「${group.query}」×${group.total}（通过 ${group.passed}/${group.total}）`)
+      .join("；");
+    lines.push(`  重复 query：${summary.duplicates.length} 组，${detail}`);
+  } else {
+    lines.push("  重复 query：无");
+  }
+  return lines;
 }
 
 /**

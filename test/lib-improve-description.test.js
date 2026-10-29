@@ -286,7 +286,9 @@ test("子进程非 0 退出时报错，临时文件仍被清理", async () => {
     improveDescription(improveOptions(evalOutput([evalResult("missed query")]))),
     (error) => {
       assert.equal(error instanceof Error, true);
-      assert.match(error.message, /opencode run exited 1\nstderr: boom/);
+      // 用户侧只看到中文摘要；原始 stderr 不再进入 message（只在 SKILL_ZH_DEBUG=1 时输出）。
+      assert.match(error.message, /opencode run 退出码 1/);
+      assert.equal(error.message.includes("boom"), false);
       return true;
     },
   );

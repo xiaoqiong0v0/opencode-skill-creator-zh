@@ -2,7 +2,7 @@
  * 生成描述优化过程的 HTML 报告。
  *
  * 迁自上游 `plugin/lib/report.ts`（基线 `d4383924`），移植自上游 Python 脚本
- * `scripts/generate_report.py`；行为保持不变，页面文案与样式也沿用上游原文。
+ * `scripts/generate_report.py`；行为保持不变，页面可见文案已本地化为中文，样式沿用上游原文。
  *
  * 产出单文件自包含 HTML：注释里的页面文案、内联样式与字体外链由用户浏览器直接加载，
  * 不在本地起服务。
@@ -136,7 +136,7 @@ export function generateHtml(
 <html>
 <head>
     <meta charset="utf-8">
-${refreshTag}    <title>${titlePrefix}Skill Description Optimization</title>
+${refreshTag}    <title>${titlePrefix}技能描述优化</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600&family=Lora:wght@400;500&display=swap" rel="stylesheet">
@@ -247,30 +247,30 @@ ${refreshTag}    <title>${titlePrefix}Skill Description Optimization</title>
     </style>
 </head>
 <body>
-    <h1>${titlePrefix}Skill Description Optimization</h1>
+    <h1>${titlePrefix}技能描述优化</h1>
     <div class="explainer">
-        <strong>Optimizing your skill's description.</strong> This page updates automatically as OpenCode tests different versions of your skill's description. Each row is an iteration \u2014 a new description attempt. The columns show test queries: green checkmarks mean the skill triggered correctly (or correctly didn't trigger), red crosses mean it got it wrong. The "Train" score shows performance on queries used to improve the description; the "Test" score shows performance on held-out queries the optimizer hasn't seen. When it's done, OpenCode will apply the best-performing description to your skill.
+        <strong>正在优化技能描述。</strong> 本页会随 OpenCode 测试不同版本的技能描述自动刷新。每一行是一轮迭代，即一次新的描述尝试；各列显示测试 query：绿色对勾表示技能触发正确（或正确地未触发），红色叉号表示判断错误。「训练」分数是用于改进描述的 query 上的表现，「测试」分数是优化器没见过的留出 query 上的表现。全部完成后，OpenCode 会把表现最好的描述写回技能。
     </div>
 `);
 
   // 概要段：原始描述、最佳描述、最佳分数与迭代/训练/测试规模
   parts.push(`
     <div class="summary">
-        <p><strong>Original:</strong> ${escapeHtml(d.original_description ?? "N/A")}</p>
-        <p class="best"><strong>Best:</strong> ${escapeHtml(d.best_description ?? "N/A")}</p>
-        <p><strong>Best Score:</strong> ${d.best_score ?? "N/A"} ${d.best_test_score ? "(test)" : "(train)"}</p>
-        <p><strong>Iterations:</strong> ${d.iterations_run ?? 0} | <strong>Train:</strong> ${d.train_size ?? "?"} | <strong>Test:</strong> ${d.test_size ?? "?"}</p>
+        <p><strong>原始描述：</strong> ${escapeHtml(d.original_description ?? "无")}</p>
+        <p class="best"><strong>最佳描述：</strong> ${escapeHtml(d.best_description ?? "无")}</p>
+        <p><strong>最佳分数：</strong> ${d.best_score ?? "无"} ${d.best_test_score ? "（测试集）" : "（训练集）"}</p>
+        <p><strong>迭代：</strong> ${d.iterations_run ?? 0} | <strong>训练：</strong> ${d.train_size ?? "?"} | <strong>测试：</strong> ${d.test_size ?? "?"}</p>
     </div>
 `);
 
   // 图例：列的颜色约定
   parts.push(`
     <div class="legend">
-        <span style="font-weight:600">Query columns:</span>
-        <span class="legend-item"><span class="legend-swatch swatch-positive"></span> Should trigger</span>
-        <span class="legend-item"><span class="legend-swatch swatch-negative"></span> Should NOT trigger</span>
-        <span class="legend-item"><span class="legend-swatch swatch-train"></span> Train</span>
-        <span class="legend-item"><span class="legend-swatch swatch-test"></span> Test</span>
+        <span style="font-weight:600">query 列：</span>
+        <span class="legend-item"><span class="legend-swatch swatch-positive"></span> 应触发</span>
+        <span class="legend-item"><span class="legend-swatch swatch-negative"></span> 不应触发</span>
+        <span class="legend-item"><span class="legend-swatch swatch-train"></span> 训练</span>
+        <span class="legend-item"><span class="legend-swatch swatch-test"></span> 测试</span>
     </div>
 `);
 
@@ -280,10 +280,10 @@ ${refreshTag}    <title>${titlePrefix}Skill Description Optimization</title>
     <table>
         <thead>
             <tr>
-                <th>Iter</th>
-                <th>Train</th>
-                <th>Test</th>
-                <th class="query-col">Description</th>
+                <th>迭代</th>
+                <th>训练</th>
+                <th>测试</th>
+                <th class="query-col">描述</th>
 `);
 
   for (const qinfo of trainQueries) {

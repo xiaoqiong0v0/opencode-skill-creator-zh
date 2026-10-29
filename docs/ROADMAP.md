@@ -6,7 +6,7 @@
 
 `.tmp/old/` **不是上游原文**，而是含 2 个 fork 提交的中间态（`69bcb56` 汉化技能、`221bb4e` 中文 CLI 骨架）：`plugin/package.json` 已改名、`plugin/skill/` 已汉化、`plugin/single-tool.ts` 已有 CLI 原型；**只有 `plugin/lib/**` 与基线 `d4383924` 一致**。B2/B3 迁 `lib/` 时一律以 `d4383924` 为基线，其余文件只当 fork 中间态参考，不得当作上游原文引用。
 
-状态：B0–B5 已完成（B3/B4/B5 于 2026-10-29 落地并实测，见各自「实测结论」）；B6 未开始。
+状态：**B0–B6 全部完成**（B3/B4/B5/B6 于 2026-10-29 落地并实测，见各批「实测结论」）。**发布链路尚未做**：`npm publish` 由用户手动执行，包尚未上线。
 
 ---
 
@@ -19,24 +19,24 @@
 ## B1 工程骨架
 
 - **内容**：
-  - `package.json`：包名 `@xiaoqiong0v0/opencode-skill-creator-zh`、版本 `0.1.0`、`type: module`、`main` 指向 `dist/index.js`、`files: ["dist","skill","README.md"]`、`engines.node >= 22.3`（`test` 用 `--experimental-test-module-mocks`）、license `Apache-2.0`。
+  - `package.json`：包名 `@xiaoqiong0v0/opencode-skill-creator-zh`、版本 `0.1.0`、`type: module`、`main` 指向 `dist/index.js`、`files: ["dist","skill","templates","README.md"]`（`templates` 于 B3 补入，`new` 运行必需）、`engines.node >= 22.3`（`test` 用 `--experimental-test-module-mocks`）、license `Apache-2.0`。
   - 脚本：`prebuild` 清 `dist/`；`build` = `npm run typecheck && tsc`；`typecheck` = `tsc --noEmit`；`test` = `node --test`（自动发现用例，不传 glob）；`prepack` = `npm test`（`test` 已含 build，不重复构建）。
   - `tsconfig.json`：`module`/`moduleResolution` = `NodeNext`、`target` 与 Node ≥22.3 匹配、`strict` 打开、`declaration: false`、`outDir: dist`、`include` 只覆盖 `src/`（`test/` 为纯 JS，由 `node --test` 执行，不进 tsc；口径见 [CONVENTIONS.md](CONVENTIONS.md)）。
   - 目录骨架：`src/`、`src/lib/`、`src/cli/`、`test/`、`scripts/`、`templates/`（`src/` 内先只放占位导出，保证 `build` 可跑）。
   - 根 `LICENSE`：已就位（Apache-2.0，与 `.tmp/old/LICENSE` 逐字节一致），本批只核对存在、不重写。
 - **涉及文件**：`package.json`、`tsconfig.json`、`package-lock.json`（首次 `npm install` 生成）、`LICENSE`、`src/**`、`test/**`、`scripts/**`。
-- **验收方式**：`npm run typecheck` 退出码 0；`npm run build` 产出 `dist/` 且 `git status` 不显示 `dist/`（已被忽略）；重复 `npm run build` 不会残留上一版文件；`npm pack --dry-run` 只列 `dist/`、`skill/`、`README.md`（及 LICENSE/package.json 等 npm 必带项）。
+- **验收方式**：`npm run typecheck` 退出码 0；`npm run build` 产出 `dist/` 且 `git status` 不显示 `dist/`（已被忽略）；重复 `npm run build` 不会残留上一版文件；`npm pack --dry-run` 只列 `dist/`、`skill/`、`templates/`、`README.md`（及 LICENSE/package.json 等 npm 必带项）。
 
 ## B2 单工具壳：注册 / 分发 / help / 错误格式
 
 - **内容**：
   - `src/index.ts`：V1 入口 `export default { id: "opencode-skill-creator-zh", server }`，`server` 内**唯一 1 处**工具注册，注册 `skill_zh`（`args: string`，description 用定稿值）。
-  - `src/cli/`：`parseArgs`（支持 `--flag value` 与 `--flag=value`）、`dispatch`（6 子命令表）、`help.ts`（`HELP_TEXT`）、`errors.ts`（三段式构造器）。
+  - `src/cli/`：`parseArgs`（支持 `--flag value` 与 `--flag=value`）、`dispatch`（7 子命令表）、`help.ts`（`HELP_TEXT`）、`errors.ts`（三段式构造器）。
   - **优先复用既有壳**：`.tmp/old/plugin/single-tool.ts` 已有 `skill_zh` 原型（`SUBCOMMANDS` L19–26、`TOOL_DESCRIPTION` L31 即定稿原文、`HELP_TEXT` L37–68 含 6 条示例），迁入时以它为基础改写，**不要从零重写**；其中 `package` 相关文案（「或 npm 包」、示例 `--out ./dist`）需按「只导出目录 + `--out` 必填」改写。
   - 错误覆盖 **4 类**（与 SPEC R5/R7 一致）：未知子命令 / 缺参 / 路径不存在 / 非法参数值，全部走 `errors.ts`；本批除 `help` 外子命令返回「尚未实现 + 对应 B3/B4/B5 批次」，不抛堆栈。
   - 调试开关：调用进程设 `SKILL_ZH_DEBUG=1` 时输出执行细节与原始错误；未置位时不外泄内部路径与堆栈（对应 [tools.md](tools.md) 通用约定的「调试」行）。**顺延至 B3**：当前除 `help` 外无真实错误路径、无抛点，接了 `lib/` 之后再落地。
 - **涉及文件**：`src/index.ts`、`src/cli/parse-args.ts`、`src/cli/dispatch.ts`、`src/cli/help.ts`、`src/cli/errors.ts`、`test/cli-help.test.js`、`test/cli-errors.test.js`。
-- **验收方式**：工具列表新增 1 项；`src/` 下工具注册调用点计数 = 1（R1）；`skill_zh help` 覆盖 6 子命令 + 6 示例（R3）；description 33 字符（R4）；4 类失败（未知子命令 / 缺参 / 路径不存在 / 非法参数值）满足三段式（R5）；`npm test` 全绿。`SKILL_ZH_DEBUG=1` 的验收（原本列在本批）随实现顺延至 B3。
+- **验收方式**：工具列表新增 1 项；`src/` 下工具注册调用点计数 = 1（R1）；`skill_zh help` 覆盖 7 子命令 + 每个子命令至少 1 条示例（R3；`install` 文案随本批落地，handler 到 B5 换真实现）；description 33 字符（R4）；4 类失败（未知子命令 / 缺参 / 路径不存在 / 非法参数值）满足三段式（R5）；`npm test` 全绿。`SKILL_ZH_DEBUG=1` 的验收（原本列在本批）随实现顺延至 B3。
 
 ## B3 逻辑迁入与 `new` / `validate`（已完成）
 
@@ -88,15 +88,16 @@
   - 安装器**只**在目标技能目录与状态目录内写/删，不触碰其它技能目录（含上游 `opencode-skill-creator/`），也不像上游那样把同级 `skill-creator/` 改名归档（`.tmp/old/plugin/lib/skill-install.ts:297-313`、`:391-397`）。
   - 约束来源与完整测试点见 [design/技能安装与目录问题.md](design/技能安装与目录问题.md)；需求口径见 [SPEC.md 的 `R6.1`](SPEC.md#r61-技能安装约束)。
 - **涉及文件**：`src/cli/install.ts`（新增：`--dry-run` / `--force` 与冲突提示）、`src/cli/package.ts`（导出白名单与 `--out` 校验）、`src/lib/skill-install.ts`（白名单拷贝、状态目录、外部目录探测、用户改动保护全部在这里）、`src/index.ts`（启动时安装钩子）、`test/package.test.js`、`test/skill-install.test.js`。
-- **验收方式**：`skill_zh install --dry-run` 在无冲突目录下不产生任何文件（比对运行前后目录快照）；在探测目录放同名技能后，`--dry-run` 与默认行为都点名该路径且**不覆盖**；用户改过 `SKILL.md` 后默认安装不覆盖、`install --force` 才覆盖且用户版本进状态目录备份；`package` 缺 `--out` 时按「缺参」走三段式，给出带 `--out` 的示例；导出产物结构自检通过、与源技能目录逐文件一致且不含元数据（R6.1-I2）；`npm pack --dry-run` 含 `dist/`、`skill/`、`README.md` 且无源码泄漏（R6/R7）；本地装入后 `~/.config/opencode/skills/opencode-skill-creator-zh/` 内容 = 源 `skill/` 白名单集合，目录内无点开头条目、无 `*.user-backup`（R6.1-I1/I2）；构造含 `dist/`、`bin/`、`test/` 的源目录安装后目标无这些条目（R6.1-I1）；大小写变体（`skill.md`、`Skill.MD`）走同一判据（R6.1-I1 附带断言）；探测目录放同名技能时输出点名该路径且探测目录哈希不变（R6.1-I3）；手工改 `SKILL.md` 后重装内容不变 + 提示 `--force`，`--force` 后为包内版本且状态目录有备份（R6.1-I5）；与上游英文技能同时安装互不覆盖；卸载只删本包技能目录与状态文件。
+- **验收方式**：`skill_zh install --dry-run` 在无冲突目录下不产生任何文件（比对运行前后目录快照）；在探测目录放同名技能后，`--dry-run` 与默认行为都点名该路径且**不覆盖**；用户改过 `SKILL.md` 后默认安装不覆盖、`install --force` 才覆盖且用户版本进状态目录备份；`package` 缺 `--out` 时按「缺参」走三段式，给出带 `--out` 的示例；导出产物结构自检通过、与源技能目录逐文件一致且不含元数据（R6.1-I2）；`npm pack --dry-run` 含 `dist/`、`skill/`、`templates/`、`README.md` 且无源码泄漏（R6/R7）；本地装入后 `~/.config/opencode/skills/opencode-skill-creator-zh/` 内容 = 源 `skill/` 白名单集合，目录内无点开头条目、无 `*.user-backup`（R6.1-I1/I2）；构造含 `dist/`、`bin/`、`test/` 的源目录安装后目标无这些条目（R6.1-I1）；大小写变体（`skill.md`、`Skill.MD`）走同一判据（R6.1-I1 附带断言）；探测目录放同名技能时输出点名该路径且探测目录哈希不变（R6.1-I3）；手工改 `SKILL.md` 后重装内容不变 + 提示 `--force`，`--force` 后为包内版本且状态目录有备份（R6.1-I5）；与上游英文技能同时安装互不覆盖；卸载只删本包技能目录与状态文件。
 
-- **2026-10-29 实测结论**：`npm run typecheck` 退出码 0；`npm test` **269 例全绿（269 通过 / 0 失败 / 0 skip）**，其中新增 `cli-package` 6 例、`cli-install` 5 例、`lib-install-conflict` 7 例、重写 `lib-skill-install` 8 例。手工在临时 HOME 跑 `install --dry-run`：输出「预览（未写盘）」与将写入清单、未创建目录；真实 `install`：目标目录 6 个文件 = 包内白名单集合（`SKILL.md`、`agents/analyzer.md`、`agents/comparator.md`、`agents/grader.md`、`references/schemas.md`、`templates/eval-review.html`），状态文件在 `.skill-zh-state/opencode-skill-creator-zh.json`，技能目录无点开头条目。可失败性：把白名单判定临时改成「全部放行」后 `lib-skill-install` 的「只拷白名单条目」立即变红；还原后回到全绿。
+- **2026-10-29 实测结论**：`npm run typecheck` 退出码 0；`npm test` **275 例全绿**（275 通过 / 0 失败 / 0 skip），新增 `cli-package` 6 例、`cli-install` 5 例、`lib-install-conflict` 7 例、重写 `lib-skill-install` 8 例。手工在临时 HOME 跑 `install --dry-run`：输出「预览（未写盘）」与将写入清单，运行后目标目录仍不存在；真实 `install`：目标目录 6 个文件 = 包内白名单集合（`SKILL.md`、`agents/analyzer.md`、`agents/comparator.md`、`agents/grader.md`、`references/schemas.md`、`templates/eval-review.html`），状态文件在 `.skill-zh-state/opencode-skill-creator-zh.json`，技能目录无点开头条目。可失败性：把白名单判定临时改成「全部放行」后 `lib-skill-install` 的「只拷白名单条目」立即变红；还原后回到全绿。
 
-## B6 技能正文与文案口径统一
+## B6 技能正文与文案口径统一（已完成）
 
 - **内容**：
-  - `skill/SKILL.md` 与 `skill/agents/*.md`、`skill/references/schemas.md` 中仍点名上游 `skill_*` 工具的段落，改写为 `skill_zh <子命令>` 口径。当前统计（逐处核对，可直接作验收基线）：`SKILL.md` 里 **9 个不同的上游工具名、共 14 处**——`skill_validate` 2、`skill_parse` 1、`skill_improve_description` 1、`skill_optimize_loop` 1、`skill_aggregate_benchmark` 2、`skill_generate_report` 1、`skill_serve_review` 2、`skill_stop_review` 2、`skill_export_static_review` 2；`agents/`、`references/`、`templates/` 内无工具名引用（`skill_name` / `skill_path` 是字段名，不算）。
-  - 正文里的「§8 配套插件工具一览」表按 6 子命令重写；benchmark 汇总与 HTML 报告相关步骤改写为「走 `eval` 的输出」，review / gold 相关步骤改写为「本版不提供工具，走手工流程」。
+  - `skill/SKILL.md` 与 `skill/agents/*.md`、`skill/references/schemas.md` 中仍点名上游 `skill_*` 工具的段落，改写为 `skill_zh <子命令>` 口径。改写前统计（逐处核对，作验收基线）：`SKILL.md` 里 **9 个不同的上游工具名、共 14 处**——`skill_validate` 2、`skill_parse` 1、`skill_improve_description` 1、`skill_optimize_loop` 1、`skill_aggregate_benchmark` 2、`skill_generate_report` 1、`skill_serve_review` 2、`skill_stop_review` 2、`skill_export_static_review` 2；`agents/`、`references/`、`templates/` 内无工具名引用（`skill_name` / `skill_path` 是字段名，不算）。
+  - 正文里的「配套插件工具一览」表按 **7 个子命令**重写（补 `install`）；benchmark 汇总与 HTML 报告相关步骤改写为「走 `eval` 的输出」，review / gold 相关步骤改写为「本版不提供工具，走手工流程」。
   - 文档一致性收尾：`README.md`、`docs/` 与 `skill/SKILL.md` 的子命令名、错误格式、安装路径三处口径对齐。
-- **涉及文件**：`skill/SKILL.md`、`skill/agents/analyzer.md`、`skill/agents/comparator.md`、`skill/agents/grader.md`、`skill/references/schemas.md`、`README.md`、`docs/**`、`docs/changes/skill-SKILL.<YYYYMMDD>.md`（技能正文属约定改动，需留痕）。
-- **验收方式**：`skill/` 下搜 `skill_(validate|parse|eval|improve_description|optimize_loop|aggregate_benchmark|generate_report|serve_review|stop_review|export_static_review|add_gold_standard|list_gold_standards|remove_gold_standard|get_gold_advice)` 零命中；`skill_zh` 6 子命令名在正文中出现且与 `HELP_TEXT` 一致；`skill/` 仍是唯一一份技能副本（R6/R7）；文档交叉引用链接可达。
+- **涉及文件**：`skill/SKILL.md`、`skill/agents/analyzer.md`、`skill/agents/comparator.md`、`skill/agents/grader.md`、`skill/references/schemas.md`、`README.md`、`docs/**`、[changes/skill-SKILL.20261029.md](changes/skill-SKILL.20261029.md)（技能正文属约定改动，需留痕）。
+- **验收方式**：`skill/` 下搜 `skill_(validate|parse|eval|improve_description|optimize_loop|aggregate_benchmark|generate_report|serve_review|stop_review|export_static_review|add_gold_standard|list_gold_standards|remove_gold_standard|get_gold_advice)` 零命中；`skill_zh` 的 7 个子命令名在正文中出现且与 `HELP_TEXT` 一致；`skill/` 仍是唯一一份技能副本（R6/R7）；文档交叉引用链接可达。
+- **2026-10-29 实测结论**：`skill/SKILL.md`、`skill/agents/*.md`、`skill/references/schemas.md` 全部改写完成——上述 14 处上游工具名 **14 → 0**（`skill/` 下用验收正则搜索命中 0）；正文 §8 表格为 7 个子命令（`help`/`new`/`validate`/`eval`/`optimize`/`package`/`install`）且与 `src/cli/help.ts` 的 `HELP_TEXT` 一致；`agents/` 三个文件未含工具名引用。改写内容与「本版不提供的能力」口径见 [changes/skill-SKILL.20261029.md](changes/skill-SKILL.20261029.md)。

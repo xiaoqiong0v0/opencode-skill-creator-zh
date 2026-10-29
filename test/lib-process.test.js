@@ -80,18 +80,32 @@ test("runProcess 报告超时，且不把 `null` 退出码当失败", async () =
 });
 
 test("runProcess 对忽略超时终止的子进程执行强制 kill", async () => {
-  const startedAt = Date.now();
-  const result = await runProcess(
-    [
-      "node",
-      "-e",
-      "process.on('SIGTERM', () => {}); setTimeout(() => undefined, 2000)",
-    ],
-    { timeoutMs: 200, killGraceMs: 20 },
-  );
+  const root = mkdtempSync(join(tmpdir(), "osc-timeout-kill-"));
+  const survived = join(root, "survived");
+  try {
+    const result = await runProcess(
+      [
+        "node",
+        "-e",
+        // 忽略 SIGTERM，并在 2s 时落一个「活到自然结束」标记、5s 后才退出：
+        // 只有 SIGKILL 升级能让它在这个标记出现之前结束。
+        `process.on("SIGTERM", () => {}); setTimeout(() => require("fs").writeFileSync(process.env.SKC_SURVIVED, "1"), 2_000); setTimeout(() => undefined, 5_000)`,
+      ],
+      {
+        timeoutMs: 200,
+        killGraceMs: 20,
+        env: { ...process.env, SKC_SURVIVED: survived },
+      },
+    );
 
-  assert.equal(result.timedOut, true);
-  assert.ok(Date.now() - startedAt < 1_000);
+    // 断言「超时路径被触发」与「子进程没有活到自然结束」；不把真实耗时当断言条件，
+    // 否则满载时必然误红。
+    assert.equal(result.timedOut, true);
+    assert.equal(result.exitCode, null);
+    assert.equal(existsSync(survived), false, "子进程活到了自然结束，说明 SIGKILL 升级没有生效");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("runProcess 只保留 stderr 的尾部", async () => {
@@ -131,7 +145,6 @@ test("runProcess 在子进程阻塞读 stdin 时不会挂住", async () => {
 });
 
 test("runProcess 可以按 stdout 解析结果提前结束而不超时", async () => {
-  const startedAt = Date.now();
   const result = await runProcess(
     [
       "node",
@@ -148,7 +161,9 @@ test("runProcess 可以按 stdout 解析结果提前结束而不超时", async (
 
   assert.equal(result.timedOut, false);
   assert.ok(result.stdout.includes("triggered"));
-  assert.ok(Date.now() - startedAt < 1_000);
+  // `late` 要到 1s 后才写出：它缺席即证明子进程在看到触发后被提前终止。
+  // 用输出状态判定，不用「耗时 < 1000ms」这种在满载时会误红的条件。
+  assert.equal(result.stdout.includes("late"), false);
 });
 
 test("runProcess 在 signal abort 时杀掉子进程并报告 aborted", async () => {

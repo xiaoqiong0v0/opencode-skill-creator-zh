@@ -87,3 +87,19 @@
 **现在**：`package` 补「祖先目录」拒绝与 realpath（最近存在祖先）比较；`install` 补 `--dir` 空值报错、`~` 展开、项目目录逐层 / 任意层级 / frontmatter name 探测、`--dry-run` 全部改「将…」措辞；旧版 `SKILL.md.user-backup` 仅在内容等于当前或包内版本时清理，否则迁到状态目录并点名。
 
 **为什么**：这些是复核发现的绕过与误导点；文档必须与实现一致，照抄输出不会误判「已经写盘」。
+
+## `help` 节选与安装成功示例与实际输出对齐（终审修复）
+
+**原来**：`help` 的输出示例节选只列 6 个子命令（缺 `install`）且 `package` 行是旧文案；`skill_zh install` 的成功输出写「写入（4）：SKILL.md  agents/analyzer.md  references/schemas.md  templates/eval-review.html」。
+
+**现在**：`help` 节选补 `install` 行（文案与 `HELP_TEXT` 一致）并在示例里补 `skill_zh install --dry-run`；安装成功输出改为实际的 6 个文件（`SKILL.md`、`agents/analyzer.md`、`agents/comparator.md`、`agents/grader.md`、`references/schemas.md`、`templates/eval-review.html`）。
+
+**为什么**：`help` 节选是文档里唯一能让人对照真实输出自查的片段，缺 `install` 就等于把第 7 个子命令藏起来；写入清单少两个 `agents/` 文件会让用户以为安装漏拷，实际是文档写错（B5 实测：目标目录 6 个文件 = 包内白名单集合）。
+
+## 状态行补 B6 完成（终审修复）
+
+**原来**：开头状态行写「B0–B5 完成——7 个子命令均接真实现」。
+
+**现在**：改为「B0–B6 完成——7 个子命令均接真实现」（正文工具名已改写，`install` 一节为实际行为）。
+
+**为什么**：B6（技能正文 `skill_*` 旧名改写、7 子命令对齐 `HELP_TEXT`）已完成，本页是用户查子命令的入口页，状态行不该漏掉这一批。

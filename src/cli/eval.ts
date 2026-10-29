@@ -11,6 +11,7 @@
  */
 
 import { log } from "../lib/logger.js";
+import { formatEvalSummary, summarizeEvalResults } from "../lib/aggregate.js";
 import { runEval } from "../lib/run-eval.js";
 import {
   DEFAULT_TRIGGER_THRESHOLD,
@@ -137,6 +138,8 @@ export async function evalHandler(input: HandlerInput): Promise<DispatchResult> 
     "逐条结果：",
     ...output.results.map(renderResultLine),
     ...renderFailures(failures),
+    // 汇总段复用 `lib/aggregate` 的统计口径（均值/标准差与 benchmark 同源）。
+    ...formatEvalSummary(summarizeEvalResults(output.results)),
   ];
 
   if (output.warnings.length > 0) {

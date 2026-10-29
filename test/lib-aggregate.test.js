@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 
-import { generateBenchmark, generateMarkdown } from "../dist/lib/aggregate.js";
+import { formatEvalSummary, generateBenchmark, generateMarkdown, summarizeEvalResults } from "../dist/lib/aggregate.js";
 
 /**
  * 在临时目录里跑一次断言，并保证结束时删掉整个目录。
@@ -214,7 +214,7 @@ test("空输入：没有 eval 目录时返回空汇总、零值 delta 并告警"
     );
 
     assert.equal(messages.length, 1);
-    assert.match(messages[0], /^No eval directories found in /);
+    assert.match(messages[0], /^未在 .+ 或 .+ 找到任何 eval 目录$/);
     assert.deepEqual(benchmark.runs, []);
     assert.deepEqual(benchmark.notes, []);
     assert.deepEqual(benchmark.metadata.evals_run, []);
@@ -297,11 +297,10 @@ test("单个运行目录有问题时只告警跳过，不影响其余汇总", ()
 
     // 告警顺序按 run-1 / run-2 / run-3 / run-x 的字典序遍历产生
     assert.equal(messages.length, 4);
-    assert.match(messages[0], /^Warning: expectation in /);
-    assert.match(messages[0], /missing required fields \(text, passed, evidence\)$/);
-    assert.match(messages[1], /^Warning: grading\.json not found in /);
-    assert.match(messages[2], /^Warning: Invalid JSON in /);
-    assert.match(messages[3], /^Warning: Invalid run directory name: /);
+    assert.match(messages[0], /^警告：.+expectation 缺必填字段（text、passed、evidence）$/);
+    assert.match(messages[1], /^警告：缺少 grading\.json，已跳过：/);
+    assert.match(messages[2], /^警告：grading\.json 不是合法 JSON，已跳过：/);
+    assert.match(messages[3], /^警告：run 目录名不合规，已跳过：/);
 
     assert.equal(benchmark.runs.length, 1);
     assert.deepEqual(benchmark.runs[0].notes, ["u1", "r1", "w1"]);
@@ -331,4 +330,48 @@ test("generateMarkdown 渲染统计表、带符号 delta 与备注段", () => {
     // `generateBenchmark` 自身不产出备注，备注段只在调用方补了 notes 时出现
     assert.ok(markdown.endsWith("## Notes\n\n- first note\n- second note"));
   });
+});
+
+test("eval 汇总：通过率、按 should_trigger 分组与重复 query 分组", () => {
+  const rows = [
+    { query: "重复项", should_trigger: true, trigger_rate: 1, pass: true },
+    { query: "重复项", should_trigger: true, trigger_rate: 0, pass: false },
+    { query: "只该触发", should_trigger: true, trigger_rate: 1, pass: true },
+    { query: "不该触发", should_trigger: false, trigger_rate: 0, pass: true },
+  ];
+
+  const summary = summarizeEvalResults(rows);
+  assert.equal(summary.total, 4);
+  assert.equal(summary.passed, 3);
+  assert.equal(summary.failed, 1);
+  assert.equal(summary.pass_rate, 0.75);
+
+  const should = summary.groups.find((group) => group.should_trigger);
+  const shouldNot = summary.groups.find((group) => !group.should_trigger);
+  assert.equal(should.total, 3);
+  assert.equal(should.passed, 2);
+  assert.equal(should.failed, 1);
+  assert.equal(should.pass_rate, 2 / 3);
+  assert.equal(shouldNot.total, 1);
+  assert.equal(shouldNot.passed, 1);
+
+  // 统计口径与 benchmark 同源：触发率均值/标准差由 calculateStats 计算。
+  assert.equal(should.trigger_rate.mean, 0.6667);
+  assert.equal(should.trigger_rate.max, 1);
+  assert.deepEqual(summary.duplicates, [{ query: "重复项", total: 2, passed: 1 }]);
+
+  const lines = formatEvalSummary(summary).join("\n");
+  assert.match(lines, /^汇总：/);
+  assert.match(lines, /总通过率 0\.75（3\/4），失败 1 条/);
+  assert.match(lines, /应触发：3 条，通过 2（0\.67），失败 1/);
+  assert.match(lines, /不应触发：1 条，通过 1（1\.00），失败 0/);
+  assert.match(lines, /重复 query：1 组，「重复项」×2（通过 1\/2）/);
+});
+
+test("eval 汇总：没有重复 query 时明确写「无」", () => {
+  const summary = summarizeEvalResults([
+    { query: "a", should_trigger: true, trigger_rate: 1, pass: true },
+  ]);
+  assert.deepEqual(summary.duplicates, []);
+  assert.match(formatEvalSummary(summary).join("\n"), /重复 query：无/);
 });

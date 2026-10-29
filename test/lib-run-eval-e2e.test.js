@@ -583,7 +583,7 @@ test("J4 清理失败不掩盖原始错误（原始错误仍可见）", async ()
   try {
     fs.rmSync = (target, ...rest) => {
       if (String(target).includes("opencode-skill-eval-")) {
-        throw new Error("EBUSY: simulated cleanup failure");
+        throw new Error("EBUSY: J4-CLEANUP-MARKER simulated cleanup failure");
       }
       return originalRm(target, ...rest);
     };
@@ -597,9 +597,15 @@ test("J4 清理失败不掩盖原始错误（原始错误仍可见）", async ()
     );
 
     assert.equal(output.summary.run_errors, 1);
+    // 精确断言：日志里必须仍是原始失败（退出码 3），而不是任何「运行失败」都算通过。
     assert.ok(
-      logged.some((line) => line.includes("opencode run exited 3")),
-      "清理失败掩盖了原始错误",
+      logged.some((line) => line.includes("有 query 运行失败（opencode run 退出码 3）")),
+      `原始错误未保留：${logged.join("\n")}`,
+    );
+    // 清理错误的唯一标记不得顶替原始错误出现在用户可见输出里。
+    assert.ok(
+      !logged.some((line) => line.includes("J4-CLEANUP-MARKER")),
+      "清理错误覆盖了原始错误",
     );
   } finally {
     console.error = originalError;

@@ -73,7 +73,7 @@ description: "Use for PDF files: reading, extracting."`,
     (skillPath) => {
       assert.deepEqual(validateSkill(skillPath), {
         valid: true,
-        message: "Skill is valid!",
+        message: "技能校验通过",
       });
     },
   );
@@ -86,7 +86,7 @@ description: Use for PDF files, reading and extracting.`,
     (skillPath) => {
       assert.deepEqual(validateSkill(skillPath), {
         valid: true,
-        message: "Skill is valid!",
+        message: "技能校验通过",
       });
     },
   );
@@ -95,7 +95,7 @@ description: Use for PDF files, reading and extracting.`,
 test("随包技能 fixture 通过校验", () => {
   assert.deepEqual(validateSkill(BUNDLED_SKILL_DIR), {
     valid: true,
-    message: "Skill is valid!",
+    message: "技能校验通过",
   });
 });
 
@@ -108,15 +108,11 @@ description: Use for PDF files: reading, extracting.`,
 
       assert.equal(result.valid, false);
       assert.ok(result.message.includes("description"));
-      assert.ok(result.message.includes("line 3"));
-      assert.ok(result.message.includes("Hint: quote the value"));
-      assert.ok(result.message.includes('description: "your text here"'));
-      assert.ok(
-        result.message.includes(
-          "unquoted values containing ': ' or ending with ':' are invalid YAML",
-        ),
-      );
-      assert.ok(result.message.includes("runtime will drop this skill"));
+      assert.ok(result.message.includes("第 3 行"));
+      assert.ok(result.message.includes("改法：给取值加引号"));
+      assert.ok(result.message.includes('description: "你的文本"'));
+      assert.ok(result.message.includes("含「: 」或以冒号结尾"));
+      assert.ok(result.message.includes("会被运行时丢弃"));
     },
   );
 });
@@ -128,7 +124,7 @@ description: 'Use for PDF files: reading, extracting.'`,
     (skillPath) => {
       assert.deepEqual(validateSkill(skillPath), {
         valid: true,
-        message: "Skill is valid!",
+        message: "技能校验通过",
       });
     },
   );
@@ -142,7 +138,7 @@ description: |2-
     (skillPath) => {
       assert.deepEqual(validateSkill(skillPath), {
         valid: true,
-        message: "Skill is valid!",
+        message: "技能校验通过",
       });
     },
   );
@@ -158,7 +154,7 @@ compatibility: Works with docs: markdown and PDF`,
 
       assert.equal(result.valid, false);
       assert.ok(result.message.includes("compatibility"));
-      assert.ok(result.message.includes("line 4"));
+      assert.ok(result.message.includes("第 4 行"));
     },
   );
 });
@@ -172,8 +168,8 @@ description: Note:`,
 
       assert.equal(result.valid, false);
       assert.ok(result.message.includes("description"));
-      assert.ok(result.message.includes("line 3"));
-      assert.ok(result.message.includes("Hint: quote the value"));
+      assert.ok(result.message.includes("第 3 行"));
+      assert.ok(result.message.includes("改法：给取值加引号"));
     },
   );
 });
@@ -187,8 +183,8 @@ description: Note: `,
 
       assert.equal(result.valid, false);
       assert.ok(result.message.includes("description"));
-      assert.ok(result.message.includes("line 3"));
-      assert.ok(result.message.includes("Hint: quote the value"));
+      assert.ok(result.message.includes("第 3 行"));
+      assert.ok(result.message.includes("改法：给取值加引号"));
     },
   );
 });
@@ -202,7 +198,7 @@ description: Use for PDF files:\treading`,
 
       assert.equal(result.valid, false);
       assert.ok(result.message.includes("description"));
-      assert.ok(result.message.includes("line 3"));
+      assert.ok(result.message.includes("第 3 行"));
     },
   );
 });
@@ -216,8 +212,8 @@ description: Use when reading docs.`,
 
       assert.equal(result.valid, false);
       assert.ok(result.message.includes("name"));
-      assert.ok(result.message.includes("line 2"));
-      assert.ok(result.message.includes("Hint: quote the value"));
+      assert.ok(result.message.includes("第 2 行"));
+      assert.ok(result.message.includes("改法：给取值加引号"));
     },
   );
 });
@@ -229,7 +225,7 @@ description: "Use for PDF files: reading, extracting."`,
     (skillPath) => {
       assert.deepEqual(validateSkill(skillPath), {
         valid: true,
-        message: "Skill is valid!",
+        message: "技能校验通过",
       });
     },
   );
@@ -243,7 +239,7 @@ description: |2-
     (skillPath) => {
       assert.deepEqual(validateSkill(skillPath), {
         valid: true,
-        message: "Skill is valid!",
+        message: "技能校验通过",
       });
     },
   );
@@ -258,8 +254,8 @@ description: Use for PDF files: reading, extracting.`,
 
       assert.equal(result.valid, false);
       assert.ok(result.message.includes("description"));
-      assert.ok(result.message.includes("line 3"));
-      assert.ok(result.message.includes("Hint: quote the value"));
+      assert.ok(result.message.includes("第 3 行"));
+      assert.ok(result.message.includes("改法：给取值加引号"));
     },
   );
 });
@@ -275,8 +271,8 @@ Allowed-tools: "*"`,
       const result = validateSkill(skillPath);
 
       // 现状：直接判通过，且 message 里完全看不到这个键。
-      assert.deepEqual(result, { valid: true, message: "Skill is valid!" });
-      assert.ok(!result.message.includes("Unexpected key"));
+      assert.deepEqual(result, { valid: true, message: "技能校验通过" });
+      assert.ok(!result.message.includes("不支持的键"));
       assert.ok(!result.message.includes("Allowed-tools"));
     },
   );

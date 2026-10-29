@@ -36,3 +36,19 @@
 **现在**：状态改为 B0–B5 完成；白名单、状态目录、冲突探测与用户改动保护都改为「已实现」，指向 ROADMAP B5 与 tools 的 install 一节；验证步骤改为可直接跑 `skill_zh install --dry-run`。
 
 **为什么**：安装器已落地，继续保留「目标行为」措辞会让用户按文档去验证一个不存在的状态。
+
+## 删掉 `XDG_CONFIG_HOME` 宣称，明确 `skills.urls` 不探测（终审修复）
+
+**原来**：安装位置表写「`~/.config/opencode/skills/opencode-skill-creator-zh/`（设了 `XDG_CONFIG_HOME` 时为 `$XDG_CONFIG_HOME/opencode/skills/...`）」；「装到 `~/.config/opencode/skills` 不等于一定生效」一节写「本包安装时会探测**上述位置**」，而上述发现源表含第 5 行 `skills.urls`；排障表也把 `skills.urls` 与探测动作并列。
+
+**现在**：删掉 `XDG_CONFIG_HOME` 那半句，改为「可用 `skill_zh install --dir <目标根>` 改目标根」；探测范围明确写成 `.claude`、`.agents`、配置目录（`{skill,skills}`）与 `skills.paths`，并加一句「**`skills.urls` 本版不探测**：来自远程地址的同名技能不会被安装器点名，需自行核对配置」；排障行同批注明「安装器的冲突探测只看前四类，不含 `skills.urls`」。
+
+**为什么**：实现里安装目标根是常量 + `--dir`，从不读 `XDG_CONFIG_HOME`；`skills.urls` 只在 opencode 侧参与发现，安装器没有 url 探测逻辑。原写法给出两条不存在的保障，用户会据此误判「设了环境变量就装对地方」「url 里的同名技能安装器会提示」。
+
+## 状态行补 B6 完成（终审修复）
+
+**原来**：开头状态行写「B0–B5 完成」。
+
+**现在**：改为「B0–B6 完成（发布链路未做，`npm publish` 由用户手动执行）」。
+
+**为什么**：B6 已把技能正文改为 `skill_zh` 口径，安装到本机的技能正文就是那次改写的产物；状态行漏掉 B6 会让排障者以为安装的正文还是旧版。

@@ -127,6 +127,12 @@ test("eval 输出通过率、逐条结果、报告路径与镜像汇总（非对
     assert.ok(output.includes("失败用例："));
     assert.ok(output.includes("不应触发却触发（1）"));
     assert.ok(output.includes("镜像："));
+    // 汇总段（R2）：总通过率、按 should_trigger 分组与重复 query 分组。
+    assert.ok(output.includes("汇总："), output);
+    assert.match(output, /总通过率 0\.50（1\/2），失败 1 条/);
+    assert.match(output, /应触发：1 条，通过 1（1\.00），失败 0/);
+    assert.match(output, /不应触发：1 条，通过 0（0\.00），失败 1/);
+    assert.ok(output.includes("重复 query：无"));
     const reportLine = output.split("\n").find((line) => line.startsWith("报告："));
     assert.ok(reportLine, "缺少报告路径");
     const reportPath = reportLine.slice("报告：".length);

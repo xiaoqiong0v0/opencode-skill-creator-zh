@@ -311,12 +311,59 @@ test("启动钩子：测试环境默认跳过；取消测试标记后无冲突�
     scheduleStartupSkillInstall({ logInfo: (message) => logs.push(message), logError: () => {} });
     await wait();
     assert.equal(existsSync(target), true);
-    assert.ok(logs.some((line) => line.includes("启动静默安装完成")));
+    assert.ok(logs.some((line) => line.includes("已自动安装技能到")));
   } finally {
     restore("HOME", previous.HOME);
     restore("USERPROFILE", previous.USERPROFILE);
     restore("SKILL_ZH_SKILL_SOURCE", previous.SOURCE);
     restore("NODE_TEST_CONTEXT", previous.TEST);
+    resetStartupInstallForTests();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("启动钩子：SKILL_ZH_NO_STARTUP_INSTALL=1 时完全不写盘，并记录跳过原因", async () => {
+  const root = mkdtempSync(join(tmpdir(), "osc-skill-startup-off-"));
+  const previous = {
+    HOME: process.env.HOME,
+    USERPROFILE: process.env.USERPROFILE,
+    SOURCE: process.env.SKILL_ZH_SKILL_SOURCE,
+    TEST: process.env.NODE_TEST_CONTEXT,
+    NO_STARTUP: process.env.SKILL_ZH_NO_STARTUP_INSTALL,
+  };
+  const restore = (key, value) => {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  };
+  const wait = () => new Promise((resolveTick) => setTimeout(resolveTick, 50));
+
+  try {
+    process.env.HOME = join(root, "home");
+    process.env.USERPROFILE = join(root, "home");
+    process.env.SKILL_ZH_SKILL_SOURCE = writeBundle(root, "bundle", { "SKILL.md": skillMd() });
+    // 模拟真实启动（没有测试标记），但显式 opt-out。
+    delete process.env.NODE_TEST_CONTEXT;
+    process.env.SKILL_ZH_NO_STARTUP_INSTALL = "1";
+
+    const logs = [];
+    resetStartupInstallForTests();
+    scheduleStartupSkillInstall({ logInfo: (message) => logs.push(message), logError: () => {} });
+    await wait();
+
+    // 技能根目录连带状态目录都不应被创建。
+    assert.equal(existsSync(join(root, "home", ".config", "opencode", "skills")), false);
+    assert.ok(
+      logs.some(
+        (line) => line.includes("启动安装跳过") && line.includes("SKILL_ZH_NO_STARTUP_INSTALL"),
+      ),
+      logs.join("\n"),
+    );
+  } finally {
+    restore("HOME", previous.HOME);
+    restore("USERPROFILE", previous.USERPROFILE);
+    restore("SKILL_ZH_SKILL_SOURCE", previous.SOURCE);
+    restore("NODE_TEST_CONTEXT", previous.TEST);
+    restore("SKILL_ZH_NO_STARTUP_INSTALL", previous.NO_STARTUP);
     resetStartupInstallForTests();
     rmSync(root, { recursive: true, force: true });
   }

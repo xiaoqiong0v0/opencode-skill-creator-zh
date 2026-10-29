@@ -13,6 +13,7 @@ import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
+import { debugLog } from "../lib/debug.js";
 import { IsolationError, ShadowGuardError } from "../lib/run-eval.js";
 import { parseSkillMd } from "../lib/utils.js";
 import { formatError } from "./errors.js";
@@ -519,15 +520,15 @@ export function executionFailure(
   command: "eval" | "optimize",
   skillDisplay: string,
 ): DispatchResult {
-  const reason = (error instanceof Error ? error.message : String(error))
-    .replaceAll(/\s+/g, " ")
-    .trim()
-    .slice(0, 200);
+  // 原始异常（可能含路径、凭据或子进程 stderr）只在调试开关下输出，且由 debugLog 统一掩码。
+  debugLog(
+    `[skill_zh:debug] 执行失败：${error instanceof Error ? error.message : String(error)}`,
+  );
   return {
     ok: false,
     output: formatError(
-      `无法调用 opencode 执行评测：${reason || "未知错误"}`,
-      `先确认 opencode CLI 可用、provider 与模型已配置，再运行 skill_zh ${command} ${skillDisplay}`,
+      "无法调用 opencode 执行评测：子进程启动失败或异常退出",
+      `先确认 opencode CLI 可用、provider 与模型已配置；仍失败时设 SKILL_ZH_DEBUG=1 重跑查看原始报错，再运行 skill_zh ${command} ${skillDisplay}`,
     ),
   };
 }
