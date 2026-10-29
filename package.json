@@ -1,0 +1,49 @@
+{
+  "name": "@xiaoqiong0v0/opencode-skill-creator-zh",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "OpenCode 中文技能工坊：把技能的新建、校验、评测、优化与打包收敛为单个 CLI 风格工具 skill_zh。",
+  "main": "./dist/index.js",
+  "files": [
+    "dist",
+    "skill",
+    "README.md"
+  ],
+  "scripts": {
+    "prebuild": "node scripts/clean-dist.mjs",
+    "build": "npm run typecheck && tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && node --test --experimental-test-module-mocks",
+    "prepack": "npm test"
+  },
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "skill",
+    "chinese"
+  ],
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">= 22.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xiaoqiong0v0/opencode-skill-creator-zh.git"
+  },
+  "homepage": "https://github.com/xiaoqiong0v0/opencode-skill-creator-zh#readme",
+  "bugs": {
+    "url": "https://github.com/xiaoqiong0v0/opencode-skill-creator-zh/issues"
+  },
+  "peerDependencies": {
+    "@opencode-ai/plugin": "^1.18.0"
+  },
+  "devDependencies": {
+    "@opencode-ai/plugin": "^1.18.0",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.7.0"
+  },
+  "dependencies": {
+    "@xiaoqiong0v0/opencode-plugin-logger": "^1.0.6",
+    "jsonc-parser": "^3.3.1"
+  }
+}
