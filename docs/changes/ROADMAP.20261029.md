@@ -1,0 +1,57 @@
+# ROADMAP 变更说明（2026-10-29）
+
+## B4（`eval` / `optimize`）纳入评测隔离约束
+
+**原来**：B4 的「内容」只写了「接 `runEval` / `runLoop` + `improveDescription`、输出通过率与最终 description、错误转三段式、同批产出 `docs/ASYNC.md`」；「验收方式」只有跑通 + 参数校验 + `ASYNC.md` 四要素。隔离根怎么建、项目根从哪来，**没有任何要求**，于是默认继承上游做法。
+
+**现在**：「内容」补 5 条（对应 SPEC `R6.2` 的 J1–J5）——拒绝整目录递归拷贝、项目根只来自调用方 instance root 且回退要限界并打印实际根、保留 canonical 守卫（本体/祖先/别名）、隔离根清理放 `finally`、`SKILL_ZH_DEBUG=1` 可打印镜像清单；并注明隔离根**内容范围**（只放被测技能 / 加配置 / 加兄弟技能）当时未拍板，「验收方式」同步补 J1–J5 五项断言。
+
+**为什么**：上游评测隔离根是 `mkdtempSync` + 「`symlinkSync`，失败就 `cpSync(recursive)`」（`.tmp/old/plugin/lib/run-eval.ts:297-305`、`:730`），根来自无边界向上找的 `findProjectRoot()`（`:275-287`）。不写进 B4 的验收，迁入时就会照抄，用户实测的「拷贝了多余的东西」「用错项目根」会在新仓原样复现。三方案对比见 [../design/技能评测隔离问题.md](../design/技能评测隔离问题.md)。
+
+## B4 追加 J6–J8（同日第二批）
+
+**原来**：B4 的隔离项只到 J5（拷贝范围、根来源、本体遮挡、清理、清单），没有「已经装在全局的同名技能怎么办」——实际沿用上游「检测到同名就中止，让用户先删掉自己的技能或改 `skills.paths`」。
+
+**现在**：B4「内容」补 J6（执行前枚举可见技能，命中同名基础名时在 `evalRoot/.opencode/opencode.json` 写 `permission.skill.<基础名> = "deny"`，不碰用户目录）、J7（deny 写不进或版本不支持时回退中止，三段式给实际路径 + 可复制命令）、J8（`--no-shadow-guard` 关闭自动屏蔽）；并注明坑 F 与三方案正交、任何方案都要处理；「验收方式」补三条断言（deny 写入、回退中止、开关行为）。
+
+**为什么**：合成技能只认 `<基础名>-skill-<id>` 被触发，而 `buildOpencodeEnv` 只覆盖 `PWD`（`.tmp/old/plugin/lib/process.ts:48-50`），全局同名技能在任何方案下都仍然可见；上游的选择是中止（`.tmp/old/plugin/lib/run-eval.ts:210-215`、`:221-236`），把成本转给用户且是「删技能」这种不可逆操作。
+
+## B4 镜像方案定稿为 C（同日第三批）
+
+**原来**：B4 写着「`evalRoot` 的内容范围（只放被测技能 / 加配置 / 加兄弟技能）范围未拍板，三方案对比见 design 文档；拍板后同步 `tools.md`」，即范围悬置、B4 无法按确定口径验收。
+
+**现在**：改为「**镜像方案已定 C（2026-10-29）**：保留兄弟技能与配置文档镜像，只修掉整目录递归拷贝」，并补 **J9**（四项缺一不可的镜像范围）+ 验收断言（`evalRoot` 顶层条目 = 合成技能 + 根配置文档及引用 + `.opencode/` 非 skills 条目 + 兄弟技能，无四项之外的内容且被测技能不在），删掉所有悬置措辞与「拍板后再同步」这类条件句。
+
+**为什么**：用户已定 C，B4 的验收口径必须可判定；同时要防一种误读——C 只恢复「镜像兄弟技能」这个语义，**不恢复**上游 `cpSync(recursive)` 的整目录拷贝（J1 仍然禁止，且加 `grep` 门禁）。
+
+## B4 的 J2 补运行时目录实证（同日第四批）
+
+**原来**：B4 的 J2 只写「根从 instance root 来、fallback 限定边界并打印实际根」，没有说明**哪些目录不能算项目根**，也没有对应的验收用例。
+
+**现在**：J2 补两条硬要求（向上查找排除 `~/.opencode`、`~/.config/opencode` 这类 opencode 自身目录；命中后校验项目形态并打印根与来源），并注明 `~/.opencode` 是缓存/插件数据/`skills/` 所在的运行时目录；验收方式补「从 home 下的临时目录调用时不得把 home 或 `~/.opencode` 当成项目根」。
+
+**为什么**：实测在 Windows 上，cwd 位于 home 之下时 `findProjectRoot()` 必然命中 `~/.opencode` 并返回 home，导致镜像错项目；本机对应的测试分支（兜底返回 cwd）因此不可达、只能 skip。不加这条，B4 的 J2 依旧是「文档上正确、本机做不到」。
+
+## B4 的 J2 改为「`directory` → `worktree` → 报错」（同日第五批）
+
+**原来**：B4 的 J2 写「项目根只来自调用方传入的 instance root；不再依赖无边界向上找的 `findProjectRoot()`，确需 fallback 时限定边界并输出实际命中的根」，另加「排除运行时目录 + 校验项目形态」两条——兜底边界与优先级仍未定，`process.cwd()` 也没被明确禁止。
+
+**现在**：J2 定稿为固定优先级 `ToolContext.directory` → `worktree` → 三段式报错（`错误：拿不到当前项目目录`）；**禁止 `process.cwd()`、禁止向上查找**，向上查找只作为「独立 CLI 场景」的兜底（须排除 `~/.opencode` / `~/.config/opencode`、校验项目形态、输出实际命中的根）。同批注明 B2 已落地透传骨架：`src/tool.ts` → `dispatch(input, ctx)` → handler 的 `projectDir`；B4 验收里 J2 一条改为「路径基准为 `ToolContext.directory`（次选 `worktree`）、`src/cli/**` 与 `src/tool.ts` 内 `process.cwd()` 真实调用数 = 0 且不做向上查找」。
+
+**为什么**：B2 已经把上下文接到分发层，B4 只剩「eval 用这个根」一件事；这时再保留「向上找 N 层」的兜底，等于给坑 B 留门。B2 的单测（`test/dispatch-context.test.js`）已经把优先级钉死，B4 直接复用同一口径即可。
+
+## B5 的 `install` 文案提前到 B2 落地（同日第六批）
+
+**原来**：B5 条目写「`help` 与本条同批补 `install` 的文案与示例（SPEC R2/R3 的『6 个子命令』断言沿用现有 6 个，`install` 单独断言），未知子命令的『可用子命令』列表同步加 `install`」。
+
+**现在**：改为「`install` 的 `help` 文案、示例与『可用子命令』列表已在 B2 落地（占位 handler 返回『尚未实现』三段式；SPEC R2/R3 断言改为覆盖 7 个），本条只把 handler 换成真实现」。B5 剩余工作收敛为安装器本体（白名单拷贝、状态目录、探测、改动保护）。
+
+**为什么**：帮助文案与断言是纯壳层工作，放在 B2 与其余 6 个子命令同批做，B5 就不用再动 `help.ts` 与测试；同时避免「B5 之前 `skill_zh install` 是未知子命令」这种对用户可见的空白期。
+
+## B1 的 `engines.node` / `tsconfig target` 口径改为 Node ≥ 22.3（同日第七批）
+
+**原来**：B1 条目写 `engines.node >= 18`、`tsconfig.json` 的「`target` 与 Node ≥18 匹配」。
+
+**现在**：改为 `engines.node >= 22.3`（注明 `test` 用 `--experimental-test-module-mocks`）、「`target` 与 Node ≥22.3 匹配」。
+
+**为什么**：`test` 脚本的 module mock 开关 22.3 才引入，B1 定稿的 `>= 18` 已经站不住；B1 是后续批次的验收基线，口径必须与 `package.json` 一致。

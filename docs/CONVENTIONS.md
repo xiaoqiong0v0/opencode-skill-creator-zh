@@ -32,6 +32,7 @@ opencode-skill-creator-zh/
 | `declaration` | `false` | 不对外提供类型声明，减少包体积 |
 | `outDir` | `dist` | 与 `files` 字段、`main` 指针对齐 |
 | `prebuild` | 先清 `dist/` | 避免删掉的源文件在产物里残留 |
+| `engines.node` | `>= 22.3` | `test` 用 `node --test --experimental-test-module-mocks`（该开关 22.3 才引入）；改测试脚本里的 Node flag 必须同批核对这个下限（见 SPEC R7-Node） |
 
 - `dist/` **不入库**：`.gitignore` 已忽略；提交前确认 `git status` 不含 `dist/`。
 - 源码里不写 `.ts` 扩展名导入，统一写 `.js`（NodeNext 要求）。
@@ -50,7 +51,7 @@ opencode-skill-creator-zh/
 
 ## 4. 类型
 
-- **全量标注**：函数参数、返回值、模块级常量、导出对象都要有类型；不靠推断兜底。
+- **函数全量标注**：函数参数与返回值必须有类型，不靠推断兜底；模块级常量与导出对象可依赖推断，推断不明确（字面量过宽、需要收窄联合类型）时显式标注。
 - 对外共享的接口 / 联合类型放使用方同一文件顶部或 `src/cli/types.ts`，避免循环依赖。
 - 不用 `any`；确需放宽用 `unknown` + 收窄，或在边界处集中断言并注释原因。
 - 子命令名等有限集合用 `as const` 元组 + 派生联合类型，保证 `help` 顺序与分发一致。
@@ -81,14 +82,14 @@ import { dispatch } from "./cli/dispatch.js"
 | 函数 / 变量 | lowerCamelCase；布尔量用 `is/has/can` 前缀 |
 | 类型 / 接口 | PascalCase |
 | 常量 | UPPER_SNAKE_CASE（`TOOL_NAME`、`HELP_TEXT`、`TOOL_DESCRIPTION`） |
-| 子命令 | 全小写单词，固定 6 个：`help` `new` `validate` `eval` `optimize` `package` |
+| 子命令 | 全小写单词，固定 7 个：`help` `new` `validate` `eval` `optimize` `package` `install` |
 
 - 不硬编码文案与路径：工具 description、`help`、错误模板、安装目标目录都提为常量，只留一处实现。
 - 用户可见文案全中文；JSON 输出的**字段名保持英文**（下游脚本兼容），只汉化人读的 `message` 类字段。
 
 ## 7. 测试
 
-- 位置 `test/`，文件名 `<主题>.test.js`，用 Node 内置 `node --test`，不引第三方框架。
+- 位置 `test/`，文件名 `<主题>.test.js`，用 Node 内置 `node --test --experimental-test-module-mocks`（`mock.module` 需要该开关，最低 Node 22.3），不引第三方框架。
 - 测试跑**编译产物**（`dist/`）或对同构 JS 直接 `import`；不在测试里手写一份实现来「自证」。
 - 必测项（对应 SPEC）：注册点计数、`HELP_TEXT` 覆盖度、description 长度、4 类失败（未知子命令 / 缺参 / 路径不存在 / 非法参数值）的三段式、子命令主路径。
 - **不写假测试**：不改断言迁就实现，不跳过失败用例；修不了就留红并报出。

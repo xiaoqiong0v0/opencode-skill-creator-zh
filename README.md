@@ -55,6 +55,8 @@ npm i -g @xiaoqiong0v0/opencode-skill-creator-zh
 
 插件 npm 包内自带唯一一份 `skill/`（与 `dist/` 平级）。安装后技能落在 `~/.config/opencode/skills/opencode-skill-creator-zh/`，与上游英文版技能（`opencode-skill-creator/`）**目录名不同、可共存**。为什么入包、配套约束是什么，见 [docs/design/技能打包决策.md](docs/design/技能打包决策.md)。
 
+装到用户级技能目录 **≠** 一定生效：若 `~/.claude/skills`、`~/.agents/skills` 或项目级目录存在同名技能，按扫描顺序可能被后者覆盖，详见 [docs/installation.md](docs/installation.md)。
+
 ## skill_zh 子命令速查
 
 | 子命令 | 作用 | 示例 |
@@ -72,7 +74,7 @@ npm i -g @xiaoqiong0v0/opencode-skill-creator-zh
 
 ```sh
 npm run build      # prebuild 先清 dist/，再由 tsc 直出 dist/
-npm test           # node --test test/**/*.test.js
+npm test           # node --test --experimental-test-module-mocks（要求 Node >= 22.3）
 npm run typecheck  # tsc --noEmit
 ```
 
@@ -105,6 +107,7 @@ npm run typecheck  # tsc --noEmit
 | [docs/CONVENTIONS.md](docs/CONVENTIONS.md) | 编码与文档规范 |
 | [docs/tools.md](docs/tools.md) | `skill_zh` 子命令参考 |
 | [docs/installation.md](docs/installation.md) | 安装、共存、升级与回滚 |
+| [docs/design/技能安装与目录问题.md](docs/design/技能安装与目录问题.md) | 技能安装与目录的 6 条坑（发现源、拷贝范围、元数据、禁用手段、大小写、升级保护） |
 
 ## 来源与许可
 
