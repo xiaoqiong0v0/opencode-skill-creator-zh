@@ -9,7 +9,7 @@ description: 创建、修改、打包 OpenCode 技能（skill / SKILL.md）时�
 
 ```
 确认意图 → 调研 → 草稿 → 测试用例 → 双路运行（带技能 / 基线）
-→ 评分与汇总 → 用户评审（查看器）→ 按反馈改 → 重复 → 扩大测试集 → 打包安装
+→ 评分与汇总 → 用户评审（按评分章节人工看产物）→ 按反馈改 → 重复 → 扩大测试集 → 打包安装
 ```
 
 你的工作是判断用户处在这个循环的哪一步，然后接手推进。已有草稿就直接进「运行与评审」；只有一句「我想做个 X 技能」就从访谈开始。
@@ -29,12 +29,13 @@ description: 创建、修改、打包 OpenCode 技能（skill / SKILL.md）时�
 ```
 skill-name/
 ├── SKILL.md          必需：frontmatter（name、description）+ 正文
+├── eval_set.json     评测集默认位置（格式见 4.3；可用 --eval-set 指定别的路径）
+├── .evals/           评测报告与产物（运行 skill_zh eval 后生成）
 └── 可选资源
     ├── scripts/      确定性重复操作的代码（可执行而不读入上下文）
     ├── references/   按需加载的参考资料
     ├── assets/       产出时使用的素材（模板、图标、字体）
-    ├── agents/       子代理说明文件（由 Task 工具驱动，见第 5 节）
-    └── evals/        测试用例 evals.json
+    └── agents/       子代理说明文件（由 Task 工具驱动，见第 5 节）
 ```
 
 - **渐进披露三层**：① metadata（name+description，永远在上下文，约 100 词）→ ② SKILL.md 正文（触发后在上下文，建议 <500 行）→ ③ 打包资源（按需读，不限量）。正文快超限时加一层目录并写清「接下来去哪读」。
@@ -69,23 +70,23 @@ description 决定技能会不会被调用，是**唯一触发依据**：必须�
 
 ### 4.3 测试用例
 
-草稿完成后，写 2–3 条**真实用户会说**的测试 prompt，先给用户过目再跑。存 `evals/evals.json`，此步只写 prompt 与预期描述，断言留到 4.4 起草。完整 schema（含 `expectations`/`assertions`）见 `references/schemas.md`。
+草稿完成后，写 2–3 条**真实用户会说**的测试 prompt，先给用户过目再跑。存默认位置 `<技能目录>/eval_set.json`，格式为 `[{"query":"…","should_trigger":true|false}]`；需要别的路径时用 `skill_zh eval --eval-set <路径>`。此步只写 query 与 should_trigger，断言留到 4.4 起草；跑评测后报告与产物落 `<技能目录>/.evals/`。完整 schema（含 `expectations`/`assertions`）见 `references/schemas.md`。
 
 ### 4.4 运行双路对比（本节是一口气跑完的连续流程）
 
 - 工作区放在暂存目录旁：`<skill-name>-workspace/iteration-N/eval-<ID>/{with_skill, without_skill 或 old_skill}/outputs/`，随用随建，不预先铺满。给每个 eval 起有含义的名字，目录名同名，并各写一份 `eval_metadata.json`（prompt + assertions，可先空）。
 - **同一轮**为每个测试用例同时派出 with-skill 与 baseline 两个子代理任务，不要先跑完带技能再补基线。基线选择：新技能 → 完全不给技能（`without_skill`）；改进已有技能 → 编辑前先快照旧版（`cp -r` 到 workspace/skill-snapshot/），基线指向快照（`old_skill`）。
-- 跑的过程中起草断言并向用户解释：断言要客观可验证、命名有描述性（查看器里一眼看懂查的是什么）；主观质量不硬造断言。
+- 跑的过程中起草断言并向用户解释：断言要客观可验证、命名有描述性（人评时一眼看懂查的是什么）；主观质量不硬造断言。
 - 每个子任务完成通知带 `total_tokens` 与 `duration_ms`，**立即**落盘为该 run 目录的 `timing.json`——这个数据过后拿不回来。通知到达一个处理一个，不要攒批。
 
 ### 4.5 评分、汇总、发起评审
 
 硬门禁：每个 eval 必须有成对分支输出（with_skill + 基线）才能进评审；缺对时除非用户明确接受，不继续。
 
-1. **评分**：按 `agents/grader.md` 派 grader 子代理（或少量内联评分），逐断言对照 transcript 与产物判定，写各 run 目录的 `grading.json`。字段名必须是 `text`/`passed`/`evidence`，查看器依赖这些名字。可编程检查的断言写脚本判定，不肉眼估。
-2. **汇总**：`skill_aggregate_benchmark` 生成 `benchmark.json`/`benchmark.md`（各配置的 pass_rate、时间、token，均值±标准差与差值）。手工构造 benchmark.json 先核对 `references/schemas.md`。
+1. **评分**：按 `agents/grader.md` 派 grader 子代理（或少量内联评分），逐断言对照 transcript 与产物判定，写各 run 目录的 `grading.json`。字段名必须是 `text`/`passed`/`evidence`（下游一律按这三个名字读，改名会让已有产物对不上）。可编程检查的断言写脚本判定，不肉眼估。
+2. **汇总**：本版未单独提供汇总工具——`skill_zh eval <技能目录>` 的输出已含通过率、逐条结果与失败用例，报告落在 `<技能目录>/.evals/` 下的 JSON；需要 `benchmark.json`/`benchmark.md` 时按 `references/schemas.md` 的字段手工整理（各配置的 pass_rate、时间、token，均值±标准差与差值）。
 3. **分析师过一遍**：按 `agents/analyzer.md`「分析 Benchmark 结果」一节，找出聚合数字掩盖的模式（两边都恒过的无效断言、高方差疑似 flaky、时间/token 换收益）。
-4. **查看器**：用 `skill_serve_review`（iteration 2+ 传 `previousWorkspace`；省略 benchmarkPath 会自动汇总；默认 `allowPartial: false` 严格配对）。无头环境用 `skill_export_static_review` 导出独立 HTML，用户点「提交」下载 `feedback.json` 后复制回 workspace。「Outputs」页逐条看产物并留反馈，「Benchmark」页看量化对比；用完后 `skill_stop_review` 停服务。不要自己写查看 HTML。
+4. **人工评审**：本版未提供评审查看器（起 / 停 / 导出静态 HTML 都不注册为工具，`templates/eval-review.html` 随包但未接线）。需要人工评审时按本节评分标准逐条记下各 run 的产物观感与量化对比，汇总成 `feedback.json` 放回 workspace；不跑工具、也不自己另写评审页面。
 5. 告诉用户怎么看、看完回来告诉你。
 
 ### 4.6 读反馈与迭代
@@ -112,9 +113,9 @@ description 决定技能会不会被调用，是**唯一触发依据**：必须�
 
 ## 6. 触发优化与评测（指针）
 
-技能完成后要验证/优化触发（生成 20 条语料、用 `templates/eval-review.html` 给用户过目、跑 `optimize` / `eval` 子命令、把 `best_description` 落回 frontmatter）：流程与参数见本工具 `help`。一个要点先记住：模型只给多步/专门任务查技能，太简单的一句话指令即使描述匹配也不会触发——语料要有实质内容。
+技能完成后要验证/优化触发（生成 20 条语料并让用户过目 → `skill_zh eval <技能目录> [--runs N] [--workers N]` 实测 → `skill_zh optimize <技能目录> [--iterations N]` 按失败用例改写 description → 把 `best_description` 落回 frontmatter → 再跑一次 `skill_zh eval` 复核）：参数与示例见 `skill_zh help`。一个要点先记住：模型只给多步/专门任务查技能，太简单的一句话指令即使描述匹配也不会触发——语料要有实质内容。
 
-`templates/eval-review.html` 用法：读模板，替换 `__EVAL_DATA_PLACEHOLDER__`（JSON 数组，不加引号）、`__SKILL_NAME_PLACEHOLDER__`、`__SKILL_DESCRIPTION_PLACEHOLDER__`，写临时文件打开；用户编辑后点「导出评测集」得到 `eval_set.json`。
+`templates/eval-review.html` 是评测集审阅页模板，**随包提供但本版未接线**（没有生成 / 托管 / 导出的子命令）。需要可视化过目语料时，可手工读模板、替换其中 `__EVAL_DATA_PLACEHOLDER__`（JSON 数组，不加引号）、`__SKILL_NAME_PLACEHOLDER__`、`__SKILL_DESCRIPTION_PLACEHOLDER__`，写临时文件打开；否则直接在对话里把 20 条语料贴给用户过目。
 
 ## 7. 安装与登记
 
@@ -124,26 +125,28 @@ description 决定技能会不会被调用，是**唯一触发依据**：必须�
 
 ## 8. 配套插件工具一览
 
-| 工具 | 用途 |
+本插件只暴露 1 个工具 `skill_zh`，入参是一个 `args` 字符串；下表是它**实际提供**的子命令（以 `skill_zh help` 为准）：
+
+| 子命令 | 用途 |
 |---|---|
-| `skill_validate` | 校验 SKILL.md 结构与 frontmatter |
-| `skill_parse` | 解析 SKILL.md，返回 name/description/正文 |
-| `eval` 子命令 | 触发率评测（跑评测集，统计命中率） |
-| `skill_improve_description` | 按评测失败改进 description |
-| `skill_optimize_loop` | 完整「评测→改进」循环（train/test 切分） |
-| `skill_aggregate_benchmark` | 汇总各 run 的 grading.json 为 benchmark |
-| `skill_generate_report` | 生成优化过程 HTML 报告 |
-| `skill_serve_review` / `skill_stop_review` | 起/停评审查看器 |
-| `skill_export_static_review` | 无头环境导出独立评审 HTML |
+| `skill_zh help` | 打印全部子命令与可复制示例（空参数等价） |
+| `skill_zh new <技能名> [--dir <目录>] [--force]` | 按中文模板生成技能骨架（`SKILL.md` + `references/`） |
+| `skill_zh validate <技能目录> [--strict]` | 校验 SKILL.md 结构与 frontmatter（解析并报告结构问题） |
+| `skill_zh eval <技能目录> [--runs N] [--workers N]` | 触发率评测：通过率、逐条结果、失败用例，报告写 `<技能目录>/.evals/` |
+| `skill_zh optimize <技能目录> [--iterations N]` | 按评测失败反复改写 description（训练/测试集 6:4） |
+| `skill_zh package <技能目录> --out <产物路径>` | 只导出可分发的技能目录 |
+| `skill_zh install [--dry-run] [--force] [--dir <目标根>]` | 把包内技能装到用户级技能目录 |
+
+本版**未注册**的上游能力（不要按旧名调用）：benchmark 汇总与 HTML 报告（已并入 `skill_zh eval` 的输出与 `.evals/` 报告）；评审查看器的起 / 停 / 导出静态 HTML（`templates/eval-review.html` 随包但未接线，需要人工评审时按第 4.5 节手工记录）；gold 样本管理（增 / 列 / 删 / 取建议）——如有需要，单独记录在正文的参考示例里。
 
 ## 9. 打包自检清单
 
-- [ ] `skill_validate` 通过：frontmatter 只含允许字段、无含冒号未加引号的值、description ≤1024 字符且不含尖括号
+- [ ] `skill_zh validate <技能目录>` 通过：frontmatter 只含允许字段、无含冒号未加引号的值、description ≤1024 字符且不含尖括号
 - [ ] 目录名 = `name`（kebab-case）
 - [ ] description 含触发语料与不适用边界；正文里的「见技能 X」指针都指向真实存在的技能
 - [ ] SKILL.md <500 行；references 有「何时读」指引；超长 reference 带目录
 - [ ] 无自引用旧名、无悬空文件引用；`scripts/` 内代码可运行且依赖已声明
 - [ ] 内容符合无意外原则（无恶意/越权/外传数据）
-- [ ] 已在 TodoList 记住「建 evals JSON 并起查看器让用户评审」这一步
+- [ ] 已在 TodoList 记住「准备评测语料并让用户评审」这一步
 
 再强调一遍核心循环：确认意图 → 草稿 → 双路运行 → 汇总+人评 → 迭代 → 扩测 → 验证后安装交付用户。

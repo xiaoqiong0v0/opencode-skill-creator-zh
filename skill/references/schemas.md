@@ -4,9 +4,9 @@
 
 ---
 
-## evals.json
+## eval_set.json / eval_metadata.json
 
-定义一个技能的测试用例。位于技能目录内 `evals/evals.json`。
+CLI 评测集默认位于技能目录内 `eval_set.json`，格式为 `[{"query":"…","should_trigger":true|false}]`；下面这份含 `expectations`/`assertions` 的 `evals` 数组结构用于评测工作区里的 `eval_metadata.json`。
 
 ```json
 {
@@ -298,8 +298,8 @@ Benchmark 模式的输出。位于 `benchmarks/<timestamp>/benchmark.json`。
   - `runs_per_configuration`：每个配置的运行次数（如 3）
 - `runs[]`：逐次运行结果
   - `eval_id`：数字标识
-  - `eval_name`：可读的 eval 名（查看器用作小节标题）
-  - `configuration`：必须是 `"with_skill"` 或 `"without_skill"`（查看器按这个精确字符串分组和着色）
+  - `eval_name`：可读的 eval 名（人工评审时用作小节标题）
+  - `configuration`：必须是 `"with_skill"` 或 `"without_skill"`（人工评审时按这个精确字符串分组对照）
   - `run_number`：第几次运行（1、2、3…）
   - `result`：嵌套对象，含 `pass_rate`、`passed`、`total`、`time_seconds`、`tokens`、`errors`
 - `run_summary`：按配置聚合的统计
@@ -307,7 +307,7 @@ Benchmark 模式的输出。位于 `benchmarks/<timestamp>/benchmark.json`。
   - `delta`：差值字符串，如 `"+0.50"`、`"+13.0"`、`"+1700"`
 - `notes`：分析师的自由观察
 
-**重要：** 查看器严格按这些字段名读取。用 `config` 代替 `configuration`、或把 `pass_rate` 放在 run 顶层而不是 `result` 里，都会导致查看器显示空值/零值。手工生成 benchmark.json 前务必对照本 schema。
+**重要：** 本版未提供评审查看器；这些字段用于人工评审时手工对照，或后续版本接线查看器。用 `config` 代替 `configuration`、或把 `pass_rate` 放在 run 顶层而不是 `result` 里，都会让已有产物对不上。手工生成 benchmark.json 前务必对照本 schema。
 
 ---
 
