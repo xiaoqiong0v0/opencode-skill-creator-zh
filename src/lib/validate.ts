@@ -5,8 +5,9 @@
  * （与 `lib/utils.ts` 同风格，不引入 YAML 库）。
  */
 
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync } from "node:fs";
+
+import { resolveSkillMdPath } from "./utils.js";
 
 /** 校验结果：`valid` 为结论，`message` 为给用户看的一句说明。 */
 export interface ValidationResult {
@@ -63,10 +64,10 @@ function isBlockScalarMarker(value: string): boolean {
  * @returns 校验结论与一句说明；不抛错
  */
 export function validateSkill(skillPath: string): ValidationResult {
-  const skillMdPath = join(skillPath, "SKILL.md");
+  const skillMdPath = resolveSkillMdPath(skillPath);
 
-  // 先确认文件在不在
-  if (!existsSync(skillMdPath)) {
+  // 先确认文件在不在（大小写不敏感：skill.md 与 SKILL.md 等价）
+  if (skillMdPath === null) {
     return { valid: false, message: "SKILL.md not found" };
   }
 

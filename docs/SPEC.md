@@ -2,7 +2,7 @@
 
 本文是**需求与验收口径的唯一出处**。实施批次见 [ROADMAP.md](ROADMAP.md)，编码规范见 [CONVENTIONS.md](CONVENTIONS.md)，用法定稿见 [../README.md](../README.md)。
 
-> 当前状态：B0–B4 已完成——骨架、单工具壳、`new` / `validate`、`eval` / `optimize` 均已落地；`package` / `install` 待 B5，B6 做技能正文与文案收尾。文中所有行为均为**目标行为**，验收项按 ROADMAP 批次逐步成立。
+> 当前状态：B0–B5 已完成——骨架、单工具壳、`new` / `validate`、`eval` / `optimize`、`package` / `install` 均已落地；B6 做技能正文与文案收尾。文中行为均由测试或门禁守住，验收项见 §4。
 
 ## 1. 目标
 
@@ -34,7 +34,7 @@
 
 名称与顺序即 `help` 的展示顺序。
 
-> `install` 是**第 7 个**子命令，**B5 才实现**：`help` 文案、示例与 R3 的 7 个覆盖断言已在 B2 落地（调用返回「尚未实现」三段式），B5 只把 handler 换成真实现。它存在的理由：安装器跑在插件启动钩子里，CLI 参数传不进去，所以「有冲突时怎么处置」必须由用户显式调子命令完成。
+> `install` 是**第 7 个**子命令，B5 已实现。它存在的理由：安装器跑在插件启动钩子里，CLI 参数传不进去，所以「有冲突时怎么处置」必须由用户显式调子命令完成。
 
 | 子命令 | 语义 | 必备行为 |
 |---|---|---|
@@ -44,7 +44,7 @@
 | `eval` | 触发率评测 | 输出通过率、逐条 query 的触发结果、失败用例清单；benchmark 类汇总随评测输出一并给出 |
 | `optimize` | 迭代改写 description | 训练/测试集切分，输出每轮通过率与最终 description |
 | `package` | 导出技能目录 | **只导出目录**（不产出 npm 包），`--out <产物路径>` 必填；发布 npm 由用户手动执行 |
-| `install`（**B5 实现**） | 把包内 `skill/` 装到用户级技能目录 | 承担冲突探测、白名单拷贝、元数据外置；`--dry-run` 只报冲突不写盘；默认**不覆盖**用户改过的 `SKILL.md`，`--force` 才覆盖；冲突与处置口径见 R6.1 |
+| `install` | 把包内 `skill/` 装到用户级技能目录 | 承担冲突探测、白名单拷贝、元数据外置；`--dry-run` 只报冲突不写盘；`--dir` 改目标根；默认**不覆盖**用户改过的 `SKILL.md`，`--force` 才覆盖；冲突与处置口径见 R6.1 |
 
 - 未知子命令 → 走 R5 三段式，改法里列出全部可用子命令（不另外打印完整帮助）。
 - 子命令缺参 → 打印该子命令示例，不打印堆栈。
@@ -90,13 +90,13 @@
 
 ### R6.1 技能安装约束
 
-安装器（`src/lib/skill-install.ts`，**B5 才落地，当前未迁入**）必须满足下列 5 条，取代上游「整目录递归拷 + 元数据写技能目录内 + 备份后覆盖」的做法。问题推导、源码依据与完整测试点见 [design/技能安装与目录问题.md](design/技能安装与目录问题.md)。
+安装器（`src/lib/skill-install.ts`，B5 已落地）必须满足下列 5 条，取代上游「整目录递归拷 + 元数据写技能目录内 + 备份后覆盖」的做法。问题推导、源码依据与完整测试点见 [design/技能安装与目录问题.md](design/技能安装与目录问题.md)。
 
 | 编号 | 要求（可判定） | 判定方式 |
 |---|---|---|
 | I1 | **白名单拷贝**：安装只写 `SKILL.md`、`agents/**`、`references/**`、`templates/**`；白名单外条目跳过（比较不区分大小写）；技能目录内不得出现安装器元数据 | 单测：源目录另含 `dist/`、`bin/`、`test/`，安装后目标目录无这些条目，且文件集合 = 白名单集合 |
 | I2 | **元数据外置**：安装版本、属主文件清单、用户改动备份只写 `~/.config/opencode/skills/.skill-zh-state/<name>.json`（备份落同目录），技能目录只留技能本体 | 单测：安装后技能目录内无点开头条目、无 `*.user-backup`；状态目录含该技能 json |
-| I3 | **安装前探测同名技能**：按发现链探测 `.claude/skills`、`.agents/skills`、OpenCode 配置目录、`skills.paths`，遵守 `OPENCODE_DISABLE_EXTERNAL_SKILLS` 与 `OPENCODE_DISABLE_CLAUDE_CODE_SKILLS`；发现同名**只提示不改写**，并说明当前哪个生效 | 单测：在探测目录放同名技能后跑安装，输出点名该路径，且探测目录文件集合与哈希不变 |
+| I3 | **安装前探测同名技能**：按发现链探测 `.claude`、`.agents`、OpenCode 配置目录、`skills.paths`；项目目录按 `directory` → `worktree` 逐层，每个来源按 `skills/<任意层级>/SKILL.md` 递归，目录名或 frontmatter `name` 命中都算；遵守 `OPENCODE_DISABLE_EXTERNAL_SKILLS` 与 `OPENCODE_DISABLE_CLAUDE_CODE_SKILLS`；发现同名**只提示不改写**，按「外部 → config → paths」说明当前哪个生效 | 单测：`.claude` / `.agents` / 项目级各命中一次；嵌套 `skills/**/SKILL.md` 与 frontmatter name 命中；`skills.paths` 最后覆盖；环境变量关闭判定正确；安装输出点名路径且探测目录哈希前后一致 |
 | I4 | **禁用手段只给真正生效的动作**：改 `SKILL.md` 文件名、移出 `skills/`、改 frontmatter `name`、权限 deny、用环境变量关掉外部来源；不出现「重命名目录即可禁用」 | `grep -n "重命名目录"`（`docs/`、`src/`）：每条命中所在的句子必须含「不能 / 无效 / 不要 / 不给 / 不出现 / 建议」之一，作为**建议动作**出现即判失败；单测断言提示文案枚举的动作属于上述 5 类 |
 | I5 | **用户改动保护**：`SKILL.md` 磁盘哈希与状态文件记录不一致时**默认不覆盖**，提示 `skill_zh install --force`；备份只写状态目录、文件名带时间戳。辅助文件（`agents/`、`references/`、`templates/`）仍随包更新 | 单测：改本地 `SKILL.md` 后重装内容不变且提示 `--force`；加 `install --force` 后变包内版本，改动可在状态目录备份中找到 |
 
@@ -129,16 +129,16 @@
 | 需求 | 验收命令 / 检查 |
 |---|---|
 | R1 | 加载插件后工具列表计数 = 1；`src/` 下工具注册调用点计数 = 1；14 个上游工具名在注册路径上 `grep` 无命中 |
-| R2 | 7 个子命令逐个跑一遍，输出符合 R2 表格「必备行为」（`install` 在 B5 前返回「尚未实现」三段式） |
+| R2 | 7 个子命令逐个跑一遍，输出符合 R2 表格「必备行为」 |
 | R3 | 断言 `HELP_TEXT` 含 7 个子命令名 + 7 条 `skill_zh <子命令>` 示例 |
 | R4 | `[...TOOL_DESCRIPTION].length <= 60`，且文案与定稿值一致 |
 | R5 | 触发「未知子命令 / 缺参 / 路径不存在 / 非法参数值」4 类失败，输出满足三段式 |
 | R6 | `npm pack --dry-run` 列出 `dist/`、`skill/`、`README.md`；安装后技能目录名与插件 id 一致；与上游英文技能同时安装不冲突 |
-| R6.1-I1 | 单测：源目录含 `dist/`/`bin/`/`test/` 时，安装后的技能目录文件集合 = 白名单集合（`find`-式快照比对） |
-| R6.1-I2 | 单测：安装后技能目录内无点开头条目与 `*.user-backup`；`~/.config/opencode/skills/.skill-zh-state/<name>.json` 存在 |
-| R6.1-I3 | 单测：临时目录模拟探测路径放同名技能 → 安装输出点名该路径，探测目录哈希前后一致 |
+| R6.1-I1 | 单测（`lib-skill-install` / `cli-install`）：源目录含 `dist/`/`bin/`/`test/` 时，安装后的技能目录文件集合 = 白名单集合（快照比对）；`skill.md` / `AGENTS/` 大小写变体归一 |
+| R6.1-I2 | 单测：安装后技能目录内无点开头条目与 `*.user-backup`；`<目标根>/.skill-zh-state/opencode-skill-creator-zh.json` 存在且清掉旧版元数据 |
+| R6.1-I3 | 单测（`lib-install-conflict`）：`.claude` / `.agents` / 项目级各命中一次；项目目录逐层、嵌套 `SKILL.md`、frontmatter name、`skills.paths` 生效顺序；环境变量关闭判定正确；安装输出点名路径且探测目录哈希前后一致 |
 | R6.1-I4 | `grep -n "重命名目录"`（`docs/`、`src/`）每条命中须在否定/引用语境（同句含 不能 / 无效 / 不要 / 不给 / 不出现 / 建议）；提示文案枚举的动作属于 5 类 |
-| R6.1-I5 | 单测：手工改 `SKILL.md` 后重装内容不变 + 提示 `skill_zh install --force`；加 `--force` 后为包内版本且状态目录存有备份 |
+| R6.1-I5 | 单测：手工改 `SKILL.md` 后重装内容不变 + 提示 `skill_zh install --force`；加 `--force` 后为包内版本、状态目录存有 `SKILL.md.bak-<时间戳>`，技能目录内无备份 |
 | R6.2-J1 | 单测：打桩 `symlinkSync` 抛 `EPERM` 后跑隔离根镜像，`evalRoot` 文件集合 ⊆ 已知条目集合，`node_modules/`、`dist/`、`.git/` 与超单文件上限的大文件均未进入；源码门禁：`grep -n "cpSync(.*recursive"`（`src/lib/`）命中数 = 0 |
 | R6.2-J2 | 单测：`ToolContext.directory` 被透传到分发层并作为路径基准（`worktree` 为次选）；两者皆空时输出三段式（恰好三行）；`process.cwd` 打桩后取根过程不读它；源码门禁：`src/cli/**` 与 `src/tool.ts` 内 `process.cwd()` 真实调用数 = 0（注释提及不算），`src/tool.ts` 无「只读 args、丢弃 context」写法；独立 CLI 兜底：从 home 下的临时目录调用**不得返回 home**，只有 `.opencode/` 而无 `skills`/项目配置的候选根不被采纳 |
 | R6.2-J3 | 单测：被测技能与兄弟技能同存时，`evalRoot` 内按内容哈希搜不到被测技能；skills 根别名 / 祖先别名 / `.opencode/` 指向 skills 的条目三种用例均被拒，正常兄弟技能仍被镜像 |
@@ -149,6 +149,8 @@
 | R6.2-J8 | 单测：给定 `--no-shadow-guard` → 不写任何 deny 配置，且同名技能存在时按冲突消息中止（J7 的兜底路径同批用打桩写入失败验证）；无同名技能时评测正常执行 |
 | R6.2-J9 | 单测：隔离根顶层条目 = 根配置文档 + `.opencode/`（含兄弟技能、非 skills 条目）+ 被引用文件，四项之外不存在；被测技能按内容哈希不可见 |
 | B4-eval | `skill_zh eval <技能目录>` 输出通过率（passed/total、每条次数、阈值）、逐条结果、失败用例清单、镜像汇总与报告路径；`--runs` / `--workers` / `--timeout` / `--model` / `--agent` / `--eval-set` / `--log-dir` / `--no-shadow-guard` 全部生效；缺参、评测集缺失、参数非法均走三段式 |
+| B5-package | `skill_zh package <技能目录> --out <目录>` 只导出白名单四项并列出跳过项；`--out` 缺失 / 指向源目录内部 / 目标非空 / 结构不合规均走三段式且不产出半成品；输出含文件相对路径、字节数与「npm 发布由用户手动执行」 |
+| B5-install | `skill_zh install --dry-run` 不写盘；真实安装后目标技能目录 = 包内白名单集合；重复安装幂等；启动钩子在测试环境不写盘（`NODE_TEST_CONTEXT` / `SKILL_ZH_NO_STARTUP_INSTALL=1`） |
 | B4-optimize | `skill_zh optimize <技能目录>` 输出每轮训练/测试通过率与最终 description，并在 `<技能目录>/.evals/` 落盘 HTML 实时报告与 JSON 结果；`--iterations` 缺值/非法走三段式 |
 | R7 | `npm run typecheck` 退出码 0；`npm test` 退出码 0；对 `README.md`、`docs/`、`src/` 搜跨技能引用措辞无命中（来源/许可段落除外） |
 | R7-Node | `engines.node` 与 `test` 脚本用到的 Node flag 必须兼容（当前 `>=22.3` / `--experimental-test-module-mocks`）：`grep -n "experimental-test-module-mocks" package.json` 有命中时，`engines.node` 下限不得低于该 flag 的引入版本（22.3） |

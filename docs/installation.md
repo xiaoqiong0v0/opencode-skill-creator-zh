@@ -2,7 +2,7 @@
 
 [项目概览](../README.md) · [子命令参考](tools.md) · [技能打包决策](design/技能打包决策.md) · [技能安装与目录问题](design/技能安装与目录问题.md)
 
-> 当前状态：`src/` 骨架与 `package.json` 已建（B0/B1 完成），**安装器 `src/lib/skill-install.ts` 未迁入**（B5 落地）。本文除「安装命令」外全为**目标行为**；技能发现规则取自 opencode v1.18.25（跨版本需复核）。
+> 当前状态：B0–B5 完成，安装器（`src/lib/skill-install.ts`）与 `skill_zh install` 已落地；技能发现规则取自 opencode v1.18.25（跨版本需复核）。
 
 ## 前置条件
 
@@ -57,7 +57,7 @@ npm i -g @xiaoqiong0v0/opencode-skill-creator-zh
 - 目录名 `opencode-skill-creator-zh` 与插件 id、技能 frontmatter `name` 三者一致。
 - 上游英文版技能目录名是 `opencode-skill-creator`，**两者并存**：本插件只在自己的技能目录与状态目录内写/删。
 
-> 以上白名单、状态目录与探测行为是**目标约束**，`src/lib/skill-install.ts` 在 B5 落地；细节见 [design/技能安装与目录问题.md](design/技能安装与目录问题.md)。冲突处置的入口是 `skill_zh install`（`--dry-run` 预览 / `--force` 覆盖，B5 实现，见 [tools.md](tools.md)）。
+> 以上白名单、状态目录与探测行为由 `src/lib/skill-install.ts` 实现；细节见 [design/技能安装与目录问题.md](design/技能安装与目录问题.md)。冲突处置的入口是 `skill_zh install`（`--dry-run` 预览 / `--force` 覆盖 / `--dir` 指定目标根，见 [tools.md](tools.md)）。
 
 ### 装到 `~/.config/opencode/skills` 不等于一定生效
 
@@ -103,7 +103,7 @@ OpenCode **v1.18.25** 的技能发现源不止一处（源码 `packages/opencode
 
 1. `~/.config/opencode/skills/opencode-skill-creator-zh/` 下应只有 `SKILL.md`、`agents/`、`references/`、`templates/` 四项，且**不含**点开头的元数据文件、不含 `*.user-backup`。
 2. `~/.config/opencode/skills/.skill-zh-state/opencode-skill-creator-zh.json` 存在，记录了安装版本。
-3. 在 OpenCode 里输入 `skill_zh help`：应返回 7 个子命令与示例（`install` 在 B5 前提示尚未实现）。
+3. 在 OpenCode 里输入 `skill_zh help`：应返回 7 个子命令与示例；`skill_zh install --dry-run` 可预览安装。
 4. 工具列表只应新增 **1 个**工具（`skill_zh`）；如果还能看到 `skill_validate` 之类的名字，说明加载的是上游英文版插件，不是本包。
 5. 技能确实被 OpenCode 发现：若没触发，按上文「装到 `~/.config/opencode/skills` 不等于一定生效」逐项排查同名覆盖。
 
@@ -120,7 +120,7 @@ npm i -g @xiaoqiong0v0/opencode-skill-creator-zh@latest
 - 备份落在 `~/.config/opencode/skills/.skill-zh-state/`（文件名带时间戳），**不写进技能目录**，也不会被下次升级刷新掉。
 - 辅助文件（`agents/`、`references/`、`templates/`）随包更新会被覆盖；要长期保留改动，请改源仓而不是改安装副本。
 - 升级只写本包的技能目录与状态目录；不碰上游英文技能目录，也不碰 `.claude/`、`.agents/` 等外部技能目录。
-- 目标策略的落地批次见 [ROADMAP.md](ROADMAP.md) 的 B5（`src/lib/skill-install.ts` 未迁入前，本节描述的是目标行为）。
+- 安装与升级逻辑见 [ROADMAP.md](ROADMAP.md) 的 B5（已完成）与 [tools.md 的 install 一节](tools.md#skill_zh-install)。
 
 ## 卸载与回滚
 
@@ -145,7 +145,7 @@ npm i -g @xiaoqiong0v0/opencode-skill-creator-zh@<旧版本号>
 |---|---|
 | 工具列表没有 `skill_zh` | 确认配置里写的是本包名而非上游包名；重启 OpenCode；看插件加载错误 |
 | 工具列表里有多个 `skill_*` | 同时装了上游英文版；二者可共存，但不是同一套工具，按需只留一个 |
-| `skill_zh help` 有输出但子命令报「尚未实现」 | 当前批次只接线了部分子命令，见 [ROADMAP.md](ROADMAP.md) |
+| `skill_zh help` 有输出但子命令报「尚未实现」 | 装的是旧版本插件（B5 前）；升级到最新版后重启 OpenCode |
 | `eval` / `optimize` 报无法调用 `opencode` | 检查 `opencode run` 是否可用、模型是否配置；再按错误里的「改法」重试 |
 | 技能目录在，但技能不被发现 | ① 目录名与 frontmatter `name` 是否一致（都应是 `opencode-skill-creator-zh`）；② 是否有同名技能在 `.claude/skills`、`.agents/skills`、`skills.paths`、`skills.urls` 里覆盖了它（见上文发现源表） |
 | 改过的 `SKILL.md` 升级后没变 | 正常：本地有改动时默认不覆盖。要换成包内版本，跑 `skill_zh install --force`（你的版本会先进状态目录备份），或先自行另存 |

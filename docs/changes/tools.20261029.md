@@ -52,7 +52,7 @@
 
 **原来**：`validate` 只报 `validateSkill` 的第一条问题，且判失败时把提示吞掉（用户要先修完错误再跑一次才看见）；结论文案是 `未通过（N 处问题）`，不区分错误与提示；通用约定的「调试」行写 `SKILL_ZH_DEBUG=1`「B3 落地」（实际未实现）；未知子命令示例的可用列表漏了 `install`；`new` 的 `--force` 只说备份旧 `SKILL.md`。
 
-**现在**：`validate` 一次报全（未知键、未引号非法取值、缺 name/description、name 规范、description 长度、兼容性超长各自成条），错误与提示分开计数并**一并输出**（`未通过（2 处错误，1 处提示）` / `[错误 n]` / `[提示 n]`），补一份「同时有错误与提示」的示例；路径不存在时，目录名不是 kebab-case 就改给「先重命名目录，或 `skill_zh new my-skill`」；「调试」行改为 `SKILL_ZH_DEBUG=1` 尚未实现、现有入口是 `SKILL_ZH_LOG_DISABLE=1` 与 `plugin-logger.jsonc` 的 `enabled`；示例可用列表补 `install`；`--force` 改为两个被覆盖文件各留 `.bak` 并在输出点名。
+**现在**：`validate` 一次报全（未知键、未引号非法取值、缺 name/description、name 规范、description 长度、兼容性超长各自成条），错误与提示分开计数并**一并输出**（`未通过（2 处错误，1 处提示）` / `[错误 n]` / `[提示 n]`），补一份「同时有错误与提示」的示例；路径不存在时，目录名不是 kebab-case 就改给「先按 kebab-case 改目录名，或 `skill_zh new my-skill`」；「调试」行改为 `SKILL_ZH_DEBUG=1` 尚未实现、现有入口是 `SKILL_ZH_LOG_DISABLE=1` 与 `plugin-logger.jsonc` 的 `enabled`；示例可用列表补 `install`；`--force` 改为两个被覆盖文件各留 `.bak` 并在输出点名。
 
 **为什么**：只报第一条会让用户「修一条、跑一次」，且失败时看不到提示等于提示白写；文档写着一个不存在的调试开关，会让排查的人白试一轮；可用列表漏 `install` 会让用户以为命令不存在。
 
@@ -71,3 +71,19 @@
 **现在**：optimize 每次运行落独立子目录 `<logDir>/optimize-<时间戳>-<随机>/`，文档补目录结构表（HTML / JSON / `improve_iter_<n>.json`）与 `--log-dir` 选项；镜像示例改成实际输出「链接镜像」；deny 小节限定为「deny 配置不读写用户其它技能目录与全局配置；报告默认写 `<技能目录>/.evals`（可用 `--log-dir` 改）」。
 
 **为什么**：固定文件名在同一技能上跑两次 optimize 就会覆盖上一轮证据，排查时无法对比；文档没列 `--log-dir` 等于把一个已支持的选项藏起来；示例与真实输出不一致会让用户以为镜像坏了。
+
+## package / install 改为实际行为
+
+**原来**：`package` 只写目标行为（导出后自检），`install` 整节标「B5 实现」且没有 `--dir`；输出示例是按规划写的，与实现不一致。
+
+**现在**：两节都改成实际行为——`package` 补 `--out` 必填、导出到源目录内部 / 目标非空 / 结构不合规的失败示例、白名单外跳过清单、文件字节数；`install` 补 `--dir`、启动钩子行为、状态文件路径、冲突探测与 5 类处置动作、`--force` 备份位置、幂等与失败示例，并注明 `SKILL_ZH_SKILL_SOURCE` / `SKILL_ZH_NO_STARTUP_INSTALL` 两个排障开关。
+
+**为什么**：文档里的命令与输出必须能照抄执行；保留「B5 实现」标记会让模型误以为仍会返回「尚未实现」。
+
+## B5 复核：package / install 口径补齐
+
+**原来**：`package` 只拒绝「导出到源内部」，`--out` 是源祖先时会被当成普通空目录写入；`install` 的 `--dir` 没写空值与 `~` 规则，冲突探测写成项目单层，`--dry-run` 的清理 / 删除 / 备份仍用完成态措辞。
+
+**现在**：`package` 补「祖先目录」拒绝与 realpath（最近存在祖先）比较；`install` 补 `--dir` 空值报错、`~` 展开、项目目录逐层 / 任意层级 / frontmatter name 探测、`--dry-run` 全部改「将…」措辞；旧版 `SKILL.md.user-backup` 仅在内容等于当前或包内版本时清理，否则迁到状态目录并点名。
+
+**为什么**：这些是复核发现的绕过与误导点；文档必须与实现一致，照抄输出不会误判「已经写盘」。

@@ -2,9 +2,9 @@
 
 [文档索引](README.md) · [需求与验收](SPEC.md) · [实施批次](ROADMAP.md)
 
-本文件把 `eval` / `optimize` 里**隐性的并发契约显性化**：每个交互点写清四要素——**共享状态**、**保护手段**、**顺序契约**、**位置**。新增或改动并发点必须同批更新本文件，并在测试里留下可失败断言；否则视为未完成（门禁见 §8）。
+本文件把 `eval` / `optimize` 里**隐性的并发契约显性化**：每个交互点写清四要素——**共享状态**、**保护手段**、**顺序契约**、**位置**。新增或改动并发点必须同批更新本文件，并在测试里留下可失败断言；否则视为未完成（门禁见 §9）。
 
-> 适用范围：`skill_zh eval` / `skill_zh optimize` 及其底层 `src/lib/run-eval.ts`、`src/lib/run-loop.ts`、`src/lib/process.ts`、`src/lib/improve-description.ts`。`new` / `validate` 是纯同步实现，不在此列。
+> 适用范围：`skill_zh eval` / `skill_zh optimize` 及其底层 `src/lib/run-eval.ts`、`src/lib/run-loop.ts`、`src/lib/process.ts`、`src/lib/improve-description.ts`；以及插件启动钩子与 `skill_zh install` 对技能目录 / 状态文件的写入。`new` / `validate` / `package` 是纯同步且互不共享写目标，不在此列。
 
 ## 总览
 
@@ -17,6 +17,7 @@
 | 5 | [报告与日志落盘](#5-报告与日志落盘) | `logDir` 下的文件 | 唯一文件名 / 单写者 |
 | 6 | [取消信号传播](#6-取消信号传播) | `AbortSignal` | 队列检查 + 子进程 SIGTERM→SIGKILL |
 | 7 | [调试输出](#7-调试输出) | stderr | 整行写，顺序不作保证 |
+| 8 | [启动静默安装与显式 install](#8-启动静默安装与显式-install) | 目标技能目录 + `.skill-zh-state/*.json` | 每个安装调用是一个同步片段；状态文件 tmp+rename |
 
 ## 1. 多 worker 结果收集
 
@@ -67,7 +68,14 @@
 - **顺序契约**：**行内容完整，但跨 worker 的相对顺序不作保证**——排查时按条目路径过滤，不要依赖先后；默认只由 CLI 输出一行镜像汇总。
 - **位置**：`src/lib/debug.ts`；`src/lib/run-eval.ts` `printMirrorReport`。
 
-## 8. 检查方式（门禁）
+## 8. 启动静默安装与显式 install
+
+- **共享状态**：`<目标根>/opencode-skill-creator-zh/**`（技能本体）与 `<目标根>/.skill-zh-state/opencode-skill-creator-zh.json`（版本、属主哈希、备份位置）。
+- **保护手段**：安装函数**全同步**——读状态、比较哈希、写文件、写状态都在同一个同步片段里完成，事件循环不会在中间插入另一个安装；启动钩子用 `setImmediate` 只调度一次（模块级标记），且测试环境（`NODE_TEST_CONTEXT`）与 `SKILL_ZH_NO_STARTUP_INSTALL=1` 直接跳过；状态文件先写临时文件再 `rename`，不会留下半截 JSON。
+- **顺序契约**：启动钩子先跑一次 `dryRun` 计划，命中「生效冲突 / 本地改过 SKILL.md / 已是最新」就只记日志、不写盘；只有「目标不存在或版本不同且无上述情况」才执行真实安装。显式 `skill_zh install` 与此共用同一实现，后执行者的结果覆盖前者，且都只写自己的技能目录与状态目录。
+- **位置**：`src/lib/skill-install.ts` 的 `installBundledSkill`、`scheduleStartupSkillInstall`、`writeInstallState`；`src/index.ts` 的 `server()` 注册点；`src/cli/install.ts`。
+
+## 9. 检查方式（门禁）
 
 | 交互点 | 可失败断言（测试） |
 |---|---|
@@ -78,5 +86,6 @@
 | 报告落盘 | `cli-eval` / `cli-optimize`：报告路径存在且 JSON 内容完整；`optimize` 每次运行独立子目录（HTML / JSON / `improve_iter_<n>.json` 同目录） |
 | 取消传播 | `lib-run-eval-e2e`：运行中取消抛 `AbortError`、排队任务不启动、忽略 SIGTERM 时升级 SIGKILL |
 | 调试输出 | `lib-run-eval-j`：J5 调试清单命中超限/白名单外条目；未开调试时无逐条输出 |
+| 启动安装 / 显式 install | `lib-skill-install`：`NODE_TEST_CONTEXT` 下启动钩子不调度，取消标记且无冲突时完成一次安装；`cli-install`：连续两次安装幂等、状态 JSON 可解析且技能目录无临时 / 元数据残留 |
 
 > 新增并发交互点时，先在本表补一行、再补一条会失败的断言；只写注释或文档不算落地。

@@ -1,9 +1,8 @@
 /**
  * 子命令分发：把解析结果 + 项目上下文路由到对应实现，并把失败统一成三段式。
  *
- * 分发是「工具成不成功」的唯一判定位（见 docs/SPEC.md R5）：`new` / `validate` / `eval` /
- * `optimize` 已接真实现，`package` / `install` 由 B5 接入（当前回「尚未实现」三段式），
- * 绝不抛异常。
+ * 分发是「工具成不成功」的唯一判定位（见 docs/SPEC.md R5）：7 个子命令全部接真实现，
+ * 失败一律转三段式，绝不抛异常。
  *
  * 路径口径（docs/SPEC.md R6.2-J2）：项目目录只来自调用方传入的 `directory`，退一步用
  * `worktree`；**不从 `process.cwd()` 派生，也不向上查找**。上游 `findProjectRoot()` 在 Windows
@@ -13,9 +12,11 @@
 import { log } from "../lib/logger.js";
 import { evalHandler } from "./eval.js";
 import { formatError } from "./errors.js";
-import { optimizeHandler } from "./optimize.js";
 import { HELP_TEXT, SUBCOMMANDS, isSubcommand, type Subcommand } from "./help.js";
+import { installHandler } from "./install.js";
 import { newHandler } from "./new.js";
+import { optimizeHandler } from "./optimize.js";
+import { packageHandler } from "./package.js";
 import { parseArgs } from "./parse-args.js";
 import { validateHandler } from "./validate.js";
 import type { DispatchContext, DispatchResult, HandlerInput, ParsedArgs, SubcommandHandler } from "./types.js";
@@ -38,47 +39,14 @@ export function resolveProjectDir(ctx: DispatchContext): string {
   return ctx.directory || ctx.worktree;
 }
 
-/**
- * 未接实现子命令的占位 handler（`eval` / `optimize` / `package`，B4 接入）。
- *
- * 仍然接收完整 `HandlerInput`：一是保证 `ctx` 一路带到 handler（接实现时只改 handler 表），
- * 二是把将要使用的项目目录显式带进输出，路径取错时能立刻看出来。
- *
- * @param input handler 入参
- * @returns 失败结果，文本为三段式
- */
-const pendingHandler: SubcommandHandler = ({ projectDir }: HandlerInput): DispatchResult => {
-  log.info(`子命令尚未实现（B4）：项目目录 ${projectDir}`);
-  return {
-    ok: false,
-    output: formatError(
-      "子命令尚未实现",
-      `等待 B4 落地；先用 skill_zh help 查看用法（项目目录：${projectDir}）`,
-    ),
-  };
-};
-
-/**
- * `install` 的占位 handler：文案点明归属批次（B5），免得和 B3/B4 的五个子命令混淆。
- *
- * @returns 失败结果，文本为三段式
- */
-const installPendingHandler: SubcommandHandler = (): DispatchResult => {
-  log.info("install 子命令尚未实现（B5）");
-  return {
-    ok: false,
-    output: formatError("install 子命令尚未实现", "等待 B5 落地；当前可用 skill_zh help 查看规划中的用法"),
-  };
-};
-
 /** 子命令 → handler；`help` 在分发里直接短路，不在这张表里。 */
 const HANDLERS: Record<Exclude<Subcommand, "help">, SubcommandHandler> = {
   new: newHandler,
   validate: validateHandler,
   eval: evalHandler,
   optimize: optimizeHandler,
-  package: pendingHandler,
-  install: installPendingHandler,
+  package: packageHandler,
+  install: installHandler,
 };
 
 /**

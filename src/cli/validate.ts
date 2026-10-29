@@ -10,13 +10,13 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 
 import { log } from "../lib/logger.js";
-import { parseSkillMd } from "../lib/utils.js";
+import { parseSkillMd, resolveSkillMdPath } from "../lib/utils.js";
 import { validateSkill } from "../lib/validate.js";
 import { formatError } from "./errors.js";
 import type { DispatchResult, HandlerInput } from "./types.js";
 
 /** 单条校验问题。 */
-interface Issue {
+export interface Issue {
   /** 严重级别：`error` 判失败；`hint` 缺省只提示，`--strict` 下升级为 `error`。 */
   severity: "error" | "hint";
   /** 一句话说明哪里不对。 */
@@ -243,20 +243,21 @@ function scanFrontmatter(
  * @param displayPath 技能目录显示路径
  * @returns 问题列表（可能为空）
  */
-function collectIssues(skillPath: string, displayPath: string): Issue[] {
-  const skillFile = toDisplayPath(join(displayPath, "SKILL.md"));
-  const skillMdPath = join(skillPath, "SKILL.md");
+export function collectIssues(skillPath: string, displayPath: string): Issue[] {
   const dirName = basename(skillPath);
+  const skillMdPath = resolveSkillMdPath(skillPath);
 
-  if (!existsSync(skillMdPath)) {
+  if (skillMdPath === null) {
     return [
       {
         severity: "error",
-        problem: `SKILL.md 不存在：${skillFile}`,
+        problem: `SKILL.md 不存在：${toDisplayPath(join(displayPath, "SKILL.md"))}`,
         fix: `在 ${toDisplayPath(skillPath)} 下新建 SKILL.md，内容以 --- 开头、frontmatter 写 name 与 description，再写正文；也可用 skill_zh new 生成骨架后复制过来`,
       },
     ];
   }
+
+  const skillFile = toDisplayPath(join(displayPath, basename(skillMdPath)));
 
   // CRLF 先归一到 LF：下面按行匹配 `---` 与键名都假定是 \n。
   const content = readFileSync(skillMdPath, "utf-8").replace(/\r\n/g, "\n");
@@ -380,7 +381,7 @@ export function validateHandler(input: HandlerInput): DispatchResult {
         `技能目录不存在：${displayPath}`,
         KEBAB_PATTERN.test(dirName)
           ? `确认目录名拼写，或运行 skill_zh new ${dirName} --dir ${parent} 新建一个`
-          : `确认目录名拼写；技能目录名需为 kebab-case（如 my-skill），先按 kebab-case 重命名目录，或运行 skill_zh new my-skill --dir ${parent} 新建一个`,
+          : `确认目录名拼写；技能目录名需为 kebab-case（如 my-skill），先按 kebab-case 改目录名，或运行 skill_zh new my-skill --dir ${parent} 新建一个`,
       ),
     };
   }

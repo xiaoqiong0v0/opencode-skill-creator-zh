@@ -4,3 +4,5 @@ dist/
 .io/
 *.log
 .evals/
+
+*.tgz

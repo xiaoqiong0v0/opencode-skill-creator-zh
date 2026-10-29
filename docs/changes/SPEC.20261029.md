@@ -106,3 +106,18 @@
 
 **为什么**：预检根与正式评测根是两次独立写入，预检成功不代表正式写入一定成功（磁盘、权限、并发占用都可能变化）。只守预检等于只守了一半，真正的失败路径正好在两次写入之间。
 
+## B5 落地：package / install 与 R6.1 I1–I5
+
+**原来**：SPEC 的状态行与 `R6.1` 写着安装器「B5 才落地，当前未迁入」，`install` 行标「B5 实现」，§4 的 R2 验收还允许「install 返回尚未实现三段式」。I1–I5 只有要求，没有对应的实现与测试落点。
+
+**现在**：状态改为 B0–B5 完成；`install` 行补 `--dir`；`R6.1` 改为「B5 已落地」；§4 的 R2 去掉「尚未实现」例外，I1–I3/I5 的判定方式改为点名实际测试文件（`lib-skill-install` / `cli-install` / `lib-install-conflict`），并新增 `B5-package` 与 `B5-install` 两行验收。
+
+**为什么**：`package` / `install` 已是可运行实现，验收口径必须从「目标行为」切换为「可执行断言」；否则后续改动没有可失败的守门用例。
+
+## B5 复核修正（must-fix + should-fix + nit）
+
+**原来**：I3 只写「按发现链探测」，没有要求项目目录逐层、`skills/<任意层级>/SKILL.md` 与 frontmatter `name` 命中；安装器接受 `skill.md` 但 `validate` 只认 `SKILL.md`。
+
+**现在**：I3 补「`directory` → `worktree` 逐层 + 任意层级 + 目录名/frontmatter name + 外部 → config → paths 生效顺序」；§4 的 I3 验收同步；`validate` 明确文件名不区分大小写（`skill.md` 等价），与安装器 I1 口径统一。
+
+**为什么**：原实现只探项目单层且只看目录名，会漏掉真实会被加载的同名技能；两处大小写口径不一致会让「安装接受、校验拒绝」变成假失败。

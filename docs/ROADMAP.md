@@ -6,7 +6,7 @@
 
 `.tmp/old/` **不是上游原文**，而是含 2 个 fork 提交的中间态（`69bcb56` 汉化技能、`221bb4e` 中文 CLI 骨架）：`plugin/package.json` 已改名、`plugin/skill/` 已汉化、`plugin/single-tool.ts` 已有 CLI 原型；**只有 `plugin/lib/**` 与基线 `d4383924` 一致**。B2/B3 迁 `lib/` 时一律以 `d4383924` 为基线，其余文件只当 fork 中间态参考，不得当作上游原文引用。
 
-状态：B0–B4 已完成（B3/B4 于 2026-10-29 落地并实测，见各自「实测结论」）；B5–B6 未开始。
+状态：B0–B5 已完成（B3/B4/B5 于 2026-10-29 落地并实测，见各自「实测结论」）；B6 未开始。
 
 ---
 
@@ -71,14 +71,14 @@
 
 - **2026-10-29 实测结论**：`npm run typecheck` 退出码 0；`npm test` **256 例全绿（256 通过 / 0 失败 / 0 skip；本机支持符号链接，符号链接相关用例未 skip）**，其中新增 `lib-run-eval-e2e` 17 例（迁上游未迁的端到端 14 例 + J4 清理 3 例；假 `opencode` 放 PATH，无真实模型）、`cli-eval` 7 例、`cli-optimize` 5 例、`lib-run-eval-j` 12 例（J1/J5/J6/J7/J8/J9 + J1/J2 源码门禁 + 入口符号链接 / jsonc / 枚举不可用 / 整轮中止）。源码门禁 `cpSync(.*recursive` 在 `src/` 命中 0（`cpSync` 已整体移除）。手工用假 `opencode` 跑 `skill_zh eval ./skills/api-doc-writer --runs 1 --workers 1`：输出通过率 0.67（2/3）、逐条结果、失败用例、`镜像：3 个条目，链接镜像（跳过 0 项）` 与报告路径，未产生费用。可失败性：注释掉 `applySkillDeny` 后 `J6 命中同名技能时在隔离根写 deny` 立即变红（1 失败），还原后 1/1 通过。**遗留**：B2/B3 顺延的 `SKILL_ZH_DEBUG=1` 已在 B4 落地（镜像清单 + 跳过原因），但「原始异常堆栈」只进日志、不回给模型（保持 R5 三段式）。
 
-## B5 `package` 与技能入包
+## B5 `package` 与技能入包（已完成）
 
 - **内容**：
   - **新增第 7 个子命令 `install`**：把包内 `skill/` 装到用户级技能目录（`~/.config/opencode/skills/opencode-skill-creator-zh/`），是冲突探测、白名单拷贝、元数据外置的唯一入口。**加它的理由**：安装器跑在插件启动钩子里，CLI 参数传不进去，所以「有冲突时怎么处置」只能由用户显式调用子命令完成。三条行为：
     1. `--dry-run`：只做探测与报告（同名技能、将写入/跳过的文件名），**不写盘**；
     2. `--force`：才用包内版本覆盖用户改过的 `SKILL.md`（覆盖前先把用户版本备份到状态目录）；
     3. 默认（无参，即启动钩子的行为）：**无冲突时静默安装**；有冲突（发现同名技能或检测到用户改过 `SKILL.md`）时**只提示、不覆盖**，提示里给出 `skill_zh install --dry-run` / `--force` 的下一步。
-  - `install` 的 `help` 文案、示例与「可用子命令」列表已在 B2 落地（占位 handler 返回「尚未实现」三段式；SPEC R2/R3 断言改为覆盖 7 个），本条只把 handler 换成真实现。
+  - `install` 的 `help` 文案、示例与「可用子命令」列表已在 B2 落地（占位 handler 返回「尚未实现」三段式；SPEC R2/R3 断言改为覆盖 7 个），B5 已把 handler 换成真实现。
   - `package` 子命令：**只导出目录**（不产出 npm 包），`--out <产物路径>` 必填；导出后做结构自检（`SKILL.md` 存在、`references/` 存在、目录名 = `name`）。导出内容走同一份**白名单**（`SKILL.md`、`agents/**`、`references/**`、`templates/**`），不含安装器元数据。发布到 npm 由用户手动执行（`npm publish --access public`），子命令不代发。
   - 技能入包落地：`skill/` 与 `dist/` 平级随包分发；安装器把 `skill/` 装到 `~/.config/opencode/skills/opencode-skill-creator-zh/`。
   - **白名单拷贝**：安装与导出只写白名单四项，白名单外条目跳过（`SKILL_ZH_DEBUG=1` 时告警）；白名单比较不区分大小写（Windows/macOS 上 `SKILL.md` 与 `skill.md` 同一文件）。取代上游整目录递归拷（`.tmp/old/plugin/lib/skill-install.ts:74-85`）。
@@ -89,6 +89,8 @@
   - 约束来源与完整测试点见 [design/技能安装与目录问题.md](design/技能安装与目录问题.md)；需求口径见 [SPEC.md 的 `R6.1`](SPEC.md#r61-技能安装约束)。
 - **涉及文件**：`src/cli/install.ts`（新增：`--dry-run` / `--force` 与冲突提示）、`src/cli/package.ts`（导出白名单与 `--out` 校验）、`src/lib/skill-install.ts`（白名单拷贝、状态目录、外部目录探测、用户改动保护全部在这里）、`src/index.ts`（启动时安装钩子）、`test/package.test.js`、`test/skill-install.test.js`。
 - **验收方式**：`skill_zh install --dry-run` 在无冲突目录下不产生任何文件（比对运行前后目录快照）；在探测目录放同名技能后，`--dry-run` 与默认行为都点名该路径且**不覆盖**；用户改过 `SKILL.md` 后默认安装不覆盖、`install --force` 才覆盖且用户版本进状态目录备份；`package` 缺 `--out` 时按「缺参」走三段式，给出带 `--out` 的示例；导出产物结构自检通过、与源技能目录逐文件一致且不含元数据（R6.1-I2）；`npm pack --dry-run` 含 `dist/`、`skill/`、`README.md` 且无源码泄漏（R6/R7）；本地装入后 `~/.config/opencode/skills/opencode-skill-creator-zh/` 内容 = 源 `skill/` 白名单集合，目录内无点开头条目、无 `*.user-backup`（R6.1-I1/I2）；构造含 `dist/`、`bin/`、`test/` 的源目录安装后目标无这些条目（R6.1-I1）；大小写变体（`skill.md`、`Skill.MD`）走同一判据（R6.1-I1 附带断言）；探测目录放同名技能时输出点名该路径且探测目录哈希不变（R6.1-I3）；手工改 `SKILL.md` 后重装内容不变 + 提示 `--force`，`--force` 后为包内版本且状态目录有备份（R6.1-I5）；与上游英文技能同时安装互不覆盖；卸载只删本包技能目录与状态文件。
+
+- **2026-10-29 实测结论**：`npm run typecheck` 退出码 0；`npm test` **269 例全绿（269 通过 / 0 失败 / 0 skip）**，其中新增 `cli-package` 6 例、`cli-install` 5 例、`lib-install-conflict` 7 例、重写 `lib-skill-install` 8 例。手工在临时 HOME 跑 `install --dry-run`：输出「预览（未写盘）」与将写入清单、未创建目录；真实 `install`：目标目录 6 个文件 = 包内白名单集合（`SKILL.md`、`agents/analyzer.md`、`agents/comparator.md`、`agents/grader.md`、`references/schemas.md`、`templates/eval-review.html`），状态文件在 `.skill-zh-state/opencode-skill-creator-zh.json`，技能目录无点开头条目。可失败性：把白名单判定临时改成「全部放行」后 `lib-skill-install` 的「只拷白名单条目」立即变红；还原后回到全绿。
 
 ## B6 技能正文与文案口径统一
 

@@ -40,7 +40,7 @@ export const HELP_TEXT = `skill_zh —— 中文 OpenCode 技能创建工具（C
                        [--model provider/model] [--agent 名称] [--eval-set 路径] [--log-dir 路径]
                        [--no-shadow-guard]
   skill_zh package <技能目录> --out <产物路径>
-  skill_zh install [--dry-run] [--force]
+  skill_zh install [--dry-run] [--force] [--dir <目标根>]
 
 子命令：
   help      显示本帮助，覆盖全部子命令与示例
@@ -48,8 +48,8 @@ export const HELP_TEXT = `skill_zh —— 中文 OpenCode 技能创建工具（C
   validate  校验 SKILL.md 结构与 frontmatter，--strict 把长度/命名提示升级为错误
   eval      跑触发率评测，输出通过率与失败用例
   optimize  按评测失败反复改写 description（先训练/测试集切分）
-  package   只导出可分发的技能目录（--out 必填）
-  install   把包内技能装到用户级技能目录（B5 实现）
+  package   只导出白名单内的技能目录（--out 必填，不产出 npm 包）
+  install   把包内技能装到用户级技能目录（默认不覆盖本地改动）
 
 示例：
   skill_zh help
@@ -64,13 +64,16 @@ export const HELP_TEXT = `skill_zh —— 中文 OpenCode 技能创建工具（C
   skill_zh install
   skill_zh install --dry-run
   skill_zh install --force
+  skill_zh install --dir ./skills
 
 说明：
-  - new / validate / eval / optimize 已可用；package 与 install 属 B5，调用会返回「尚未实现」三段式。
+  - 7 个子命令均已可用；package 只导出目录，npm 发布由用户手动执行。
   - eval 默认：--runs 1、--workers 1、--timeout 120000 毫秒、评测集 <技能目录>/eval_set.json、
     报告目录 <技能目录>/.evals；同名技能默认自动屏蔽（--no-shadow-guard 关闭）。
   - optimize 默认：--iterations 5、--runs 1、--workers 1、--timeout 120000 毫秒，训练/测试集 6:4 切分，
     报告根目录 <技能目录>/.evals（每次运行在其下建独立子目录）。
+  - install 默认：装到 ~/.config/opencode/skills/opencode-skill-creator-zh，元数据写 .skill-zh-state/；
+    本地改过 SKILL.md 时默认不覆盖，--force 才覆盖（先备份到状态目录）。
   - 失败一律三段式：错误（哪里不对）→ 改法（可直接照做的命令）→ 可用：skill_zh help。
   - 缺参、路径不存在、参数非法等失败都给出一句可复制执行的改法，例如
     「改法：运行 skill_zh validate ./skills/my-skill」。

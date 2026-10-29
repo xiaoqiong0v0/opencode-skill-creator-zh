@@ -8,7 +8,7 @@ OpenCode 中文技能工坊 —— npm 插件，只暴露 1 个 CLI 风格工具
 
 | 文档 | 说明 |
 |---|---|
-| [SPEC.md](SPEC.md) | 需求与验收口径（R1–R7）：单工具、6 子命令、help 覆盖度、description 长度、错误三段式、技能入包、工程门禁 |
+| [SPEC.md](SPEC.md) | 需求与验收口径（R1–R7）：单工具、7 子命令、help 覆盖度、description 长度、错误三段式、技能入包与安装约束、工程门禁 |
 | [ROADMAP.md](ROADMAP.md) | 实施批次 B0–B6，每批写明「内容 → 涉及文件 → 验收方式」；阶段 0（挂起旧仓）已完成 |
 | [CONVENTIONS.md](CONVENTIONS.md) | 项目规范：目录约定、TypeScript 编译口径、注释、类型、导入分组、命名、测试、文档规则 |
 | [tools.md](tools.md) | `skill_zh` 子命令参考：参数、输出示例、失败示例（三段式），逐个子命令一节 |
@@ -46,3 +46,4 @@ OpenCode 中文技能工坊 —— npm 插件，只暴露 1 个 CLI 风格工具
 | 2026-10-29 | `install` 进入 `SUBCOMMANDS` 与 `HELP_TEXT`（3 条示例，标 B5 实现），占位 handler 返回「install 子命令尚未实现」三段式；SPEC R2/R3 与 §4 验收行、CONVENTIONS 子命令清单、tools help 行、installation 自检步骤统一为 **7 个子命令**，测试断言 7 个命令名 + 每个至少 1 条示例 | 规范写 7 个、`help` 只列 6 个、测试只测 6 个，三方不一致；`help` 是模型唯一自解释入口，命令不在其中就等于不存在。B5 因此只需换 handler，不再动文案与测试 |
 | 2026-10-29 | B4 完成：`eval` / `optimize` 接真实现（全部选项与默认值、失败三段式、报告落盘）；SPEC `§4` 补 `R6.2-J4/J5/J7/J9` 与 `B4-eval` / `B4-optimize` 验收行；新增 [ASYNC.md](ASYNC.md)（并发交互点四要素 + 门禁表）；ROADMAP B4 标完成并写实测结论（256 例全绿、`cpSync` 门禁 0、可失败性验证通过） | 从「文档目标行为」转为「可运行实现」，同时把「评测隔离 J1–J9」落到代码与门禁；并发契约此前只散落在实现里，必须单独登记。详见 [changes/SPEC.20261029.md](changes/SPEC.20261029.md)、[changes/ROADMAP.20261029.md](changes/ROADMAP.20261029.md)、[changes/tools.20261029.md](changes/tools.20261029.md)、[changes/ASYNC.20261029.md](changes/ASYNC.20261029.md) |
 | 2026-10-29 | `engines.node` 由 `>= 18` 改为 `>= 22.3`；SPEC `§2` 测试行与 CONVENTIONS `§2`/`§7`、ROADMAP B1、installation 前置条件、根 README 开发命令同步；SPEC `§4` 新增 **R7-Node** 验收行（engines 下限与 `test` 脚本的 Node flag 必须兼容） | `test` 已改用 `node --test --experimental-test-module-mocks`（22.3 才有的 flag），而 `engines` 仍声明 `>= 18`，老 Node 用户跑到测试就报未知参数。详见 [changes/SPEC.20261029.md](changes/SPEC.20261029.md)、[changes/CONVENTIONS.20261029.md](changes/CONVENTIONS.20261029.md)、[changes/ROADMAP.20261029.md](changes/ROADMAP.20261029.md)、[changes/installation.20261029.md](changes/installation.20261029.md) |
+| 2026-10-29 | B5 完成：`package` / `install` 接真实现（白名单导出 / 安装、`--out` 校验、`--dry-run` / `--force` / `--dir`、元数据外置、同名技能探测、启动静默安装）；SPEC §4 补 I1–I5 与 `B5-package` / `B5-install` 验收行；tools 两节改为实际行为；ASYNC 新增「启动静默安装与显式 install」并发点 | 从「文档目标行为」转为「可运行实现」，并把安装器四类风险（整目录拷贝、元数据污染、装完不生效、覆盖用户改动）落成可失败断言；详见 [changes/SPEC.20261029.md](changes/SPEC.20261029.md)、[changes/ROADMAP.20261029.md](changes/ROADMAP.20261029.md)、[changes/tools.20261029.md](changes/tools.20261029.md)、[changes/installation.20261029.md](changes/installation.20261029.md)、[changes/ASYNC.20261029.md](changes/ASYNC.20261029.md) |

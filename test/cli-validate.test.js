@@ -259,3 +259,20 @@ test("错误与提示一次列全：提示不会因为存在错误被吞掉", ()
     assert.ok(result.output.includes("[提示 1] 问题：name「Demo_Skill」不是 kebab-case"), result.output);
   });
 });
+
+test("SKILL.md 文件名不区分大小写：skill.md 等价", () => {
+  withTempRoot((root) => {
+    const skillDir = join(root, "lower-case-skill");
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(
+      join(skillDir, "skill.md"),
+      "---\nname: lower-case-skill\ndescription: 大小写测试\n---\n\n# T\n",
+      "utf-8",
+    );
+
+    const result = runCommand(parseArgs(`validate "${toDisplay(skillDir)}"`), ctxOf(root));
+
+    assert.equal(result.ok, true, result.output);
+    assert.ok(result.output.includes("：通过"));
+  });
+});

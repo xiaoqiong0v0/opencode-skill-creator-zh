@@ -4,7 +4,7 @@
 
 本插件只暴露 **1 个工具** `skill_zh`，入参只有一个 `args` 字符串。工具 description 为 `中文技能工坊：新建、校验、评测、优化并打包 OpenCode 技能`（33 字符），参数细节全部交给 `skill_zh help`。
 
-> 当前状态：B0–B4 完成——`new` / `validate` / `eval` / `optimize` 已接真实现；`package` 与 `install` 待 B5，调用会返回「尚未实现」三段式。相对路径的解析基准见下节「路径解析基准」。
+> 当前状态：B0–B5 完成——7 个子命令均接真实现。相对路径的解析基准见下节「路径解析基准」。
 
 ## 通用约定
 
@@ -344,27 +344,42 @@ skill_zh —— 中文 OpenCode 技能创建工具（CLI 风格单工具）
 
 ## skill_zh package
 
-导出**可分发的技能目录**（不产出 npm 包），并在产出后做结构自检（`SKILL.md` 存在、`references/` 存在、目录名与 `name` 一致）。
+把技能目录按**白名单**导出成可分发目录（**不产出 npm 包**）。导出前先做与 `validate` 同源的结构检查（`SKILL.md` 结构/frontmatter、目录名与 `name` 一致，另要求 `references/` 存在）；不合规直接拒绝，**不产出半成品**。
 
-导出的内容与安装器共用同一份**白名单**：只含 `SKILL.md`、`agents/**`、`references/**`、`templates/**`。也就是说，**导出的是白名单内的技能本体，不含安装器元数据**——版本标记、属主清单、升级备份都在 `~/.config/opencode/skills/.skill-zh-state/` 里，永远不会被导出（约束来源见 [design/技能安装与目录问题.md](design/技能安装与目录问题.md)）。
+导入 / 安装共用同一份白名单：只含 `SKILL.md`、`agents/**`、`references/**`、`templates/**`。安装器元数据（版本、属主清单、备份）在 `~/.config/opencode/skills/.skill-zh-state/`，**永远不会被导出**（约束见 [design/技能安装与目录问题.md](design/技能安装与目录问题.md)）。
 
 | 参数 | 必填 | 默认 | 说明 |
 |---|---|---|---|
-| `<技能目录>` | 是 | — | 待导出的技能目录 |
-| `--out <产物路径>` | **是** | — | 导出目标目录（不设默认，避免与构建产物 `dist/` 撞名）；已存在且非空时拒绝覆盖 |
+| `<技能目录>` | 是 | — | 待导出的技能目录；相对路径按当前项目目录解析 |
+| `--out <产物路径>` | **是** | — | 导出目标目录；相对路径按当前项目目录解析 |
 
-导出后在目标目录做结构自检（`SKILL.md` 存在、`references/` 存在、目录名与 `name` 一致）。**只导出目录，不产出 npm 包**；发布到 npm 由用户手动执行（`npm publish --access public`），子命令不代发。
+还会拒绝四种目标：`--out` 是源目录本身或其子目录、`--out` 是源的祖先目录（会把源一起导出）、`--out` 已存在且非空、`--out` 已存在但不是目录；路径比较会先取最近存在祖先的 realpath，tmpdir / 项目路径含符号链接时同样生效。白名单外的顶层条目（`dist/`、`bin/`、`test/`、根目录散文件等）跳过并在输出里列出。
 
-输出示例：
+**只导出目录，不产出 npm 包**；发布到 npm 由用户手动执行（`npm publish --access public`），子命令不代发。
+
+示例：
+
+```text
+skill_zh package ./skills/api-doc-writer --out ./skills-package/api-doc-writer
+```
+
+成功输出：
 
 ```text
 导出 ./skills/api-doc-writer → ./skills-package/api-doc-writer
-自检：SKILL.md ✓  references/ ✓  目录名=name ✓
-产物：./skills-package/api-doc-writer（4 个文件，12.3 KB）
-下一步：复制到 ~/.config/opencode/skills/ 或项目 .opencode/skills/ 下启用
+自检：SKILL.md 存在；references/ 存在；目录名与 frontmatter name 一致
+文件（4 个，共 8234 字节）：
+  SKILL.md  1204 字节
+  agents/analyzer.md  2310 字节
+  references/ref.md  4100 字节
+  templates/eval-review.html  620 字节
+跳过（白名单外，未导出）：
+  dist/
+  notes.md
+下一步：
+  1. 把 ./skills-package/api-doc-writer 复制到 ~/.config/opencode/skills/ 或项目 .opencode/skills/ 下启用
+  2. npm 发布由用户手动执行（本子命令只导出目录，不做 npm 打包、不代发）
 ```
-
-> 手工复制只启用技能正文，不受安装器管理（没有状态文件、也不会被升级逻辑覆盖）；同名技能是否真的生效取决于发现顺序，见 [installation.md](installation.md)。
 
 失败示例（缺 `--out`）：
 
@@ -374,54 +389,85 @@ skill_zh —— 中文 OpenCode 技能创建工具（CLI 风格单工具）
 可用：skill_zh help
 ```
 
-失败示例（自检未通过）：
+失败示例（导出到源目录内部）：
 
 ```text
-错误：目录名与 frontmatter name 不一致：目录 api-doc-writer，name api-doc-writer-zh
-改法：把目录重命名为 api-doc-writer-zh，或把 ./skills/api-doc-writer/SKILL.md 的 name 改为 api-doc-writer
+错误：导出目标不能是技能目录本身或其子目录：./skills/api-doc-writer/dist
+改法：换一个源目录之外的路径，例如 skill_zh package ./skills/api-doc-writer --out ./skills-package/api-doc-writer
 可用：skill_zh help
 ```
 
-## skill_zh install（**B5 实现**）
+失败示例（结构不合规）：
 
-把包内自带的 `skill/` 装到用户级技能目录 `~/.config/opencode/skills/opencode-skill-creator-zh/`。它是**冲突探测、白名单拷贝、元数据外置**的唯一入口。
+```text
+错误：导出前校验未通过（1 处错误）
+改法：
+  - 目录名与 frontmatter name 不一致：目录 api-doc-writer，name api-doc-writer-zh；把目录重命名为 api-doc-writer-zh，或把 ./skills/api-doc-writer/SKILL.md 的 name 改为 api-doc-writer
+可用：skill_zh help
+```
 
-> 为什么要有这个子命令：安装器本身跑在**插件启动钩子**里，CLI 参数传不进去，所以「发现同名技能怎么办 / 要不要覆盖我改过的 `SKILL.md`」无法在启动时由用户当场决定，只能落到显式调用的子命令上。启动钩子只负责「无冲突静默安装、有冲突只提示」。
->
-> 落地批次：`install` 在 **B5** 实现。`skill_zh help` 与「未知子命令」的可用列表已含 `install`（B2 落地），但调用 `skill_zh install` 目前返回「尚未实现」三段式；本节参数与输出仍为**目标行为**。
+## skill_zh install
+
+把包内 `skill/` 装到用户级技能目录（默认 `~/.config/opencode/skills/opencode-skill-creator-zh/`），是**白名单拷贝、元数据外置、冲突探测、用户改动保护**的唯一入口（约束见 SPEC `R6.1` 的 I1–I5）。
+
+> 为什么要有这个子命令：插件启动钩子也在做同一件事，但钩子拿不到 CLI 参数，遇到同名冲突或本地改动只能记日志。需要当场处置时，用本子命令的 `--dry-run` / `--force` / `--dir`。
 
 | 参数 | 必填 | 默认 | 说明 |
 |---|---|---|---|
-| `--dry-run` | 否 | 关 | 只探测与报告（发现哪些同名技能、将写入/跳过哪些文件），**不写盘** |
-| `--force` | 否 | 关 | 才用包内版本覆盖你改过的 `SKILL.md`（覆盖前先把你的版本备份到状态目录） |
+| `--dry-run` | 否 | 关 | 只探测与计算处置（同名技能、将写入/跳过/删除哪些文件），**不写盘** |
+| `--force` | 否 | 关 | 覆盖本地改过的 `SKILL.md`；覆盖前先把旧文件备份到状态目录 |
+| `--dir <目标根>` | 否 | `~/.config/opencode/skills` | 目标技能根目录；相对路径按当前项目目录解析 |
 
 行为：
 
-1. **默认（不带参数）**：无冲突 → 静默安装；有冲突（探测到同名技能，或检测到 `SKILL.md` 被本地改过）→ **只提示不覆盖**，并给下一步命令。
-2. `--dry-run`：只报告，不改任何文件。
-3. `--force`：覆盖 `SKILL.md`（先备份到 `~/.config/opencode/skills/.skill-zh-state/`）；白名单外的源条目始终跳过。
+1. **白名单拷贝**：只写 `SKILL.md`、`agents/**`、`references/**`、`templates/**`；白名单外条目跳过（`SKILL_ZH_DEBUG=1` 时逐条打点）。`skill.md` 等大小写变体按同一个文件处理，落盘规范为 `SKILL.md`。
+2. **元数据外置**：版本、属主文件哈希、最近一次备份位置写在 `<目标根>/.skill-zh-state/opencode-skill-creator-zh.json`；技能目录内**只有技能本体**。旧版安装器留在技能目录里的 `.opencode-skill-creator-version` / manifest 会在安装时清理；`SKILL.md.user-backup` 仅当内容等于当前或包内 `SKILL.md` 时删除，否则迁到状态目录并在输出里点名。
+3. **冲突探测**：安装前只读枚举 `~/.claude`、`~/.agents`、`~/.config/opencode/{skill,skills}`、项目目录（`directory` → `worktree` 逐层）下的同名技能，以及配置里的 `skills.paths`；每个来源按 `skills/<任意层级>/SKILL.md` 递归，目录名或 frontmatter `name` 命中都算。扫描顺序为外部 → config → `skills.paths`，后者覆盖前者，据此标出哪份当前生效。`OPENCODE_DISABLE_EXTERNAL_SKILLS` 关掉全部外部来源，`OPENCODE_DISABLE_CLAUDE_CODE_SKILLS` / `OPENCODE_DISABLE_CLAUDE_CODE` 只关 `.claude`。**只提示、不改写任何外部目录**，安装照常写自己的目录。
+4. **用户改动保护**：磁盘上的 `SKILL.md` 与状态文件记录的内容哈希不一致（= 本地改过）时**默认不覆盖**，输出字节数/首个差异行并提示 `skill_zh install --force`；`--force` 才覆盖，且旧文件备份为 `<目标根>/.skill-zh-state/SKILL.md.bak-<时间戳>`。辅助文件仍随包更新。
+5. **幂等**：内容一致的文件不重写；重复执行输出「已是最新」，不产生临时文件或残留。
+6. **只写两处**：目标技能目录与状态目录。不碰上游英文技能目录、不碰 `.claude/`、`.agents/`，也不像上游那样把同级目录改名归档。
 
-输出示例：
+成功输出：
 
 ```text
-安装：/…/skill → ~/.config/opencode/skills/opencode-skill-creator-zh
-探测：~/.claude/skills/opencode-skill-creator-zh（同名，当前生效：否）
-      ~/.config/opencode/skills/opencode-skill-creator-zh（同名，当前生效：是）
-写入：SKILL.md  agents/analyzer.md  agents/comparator.md  agents/grader.md
-      references/schemas.md  templates/eval-review.html
-跳过：dist/（不在白名单）
-下一步：skill_zh install --dry-run 只预览；或 skill_zh install --force 覆盖本地改动
+安装：已安装（0.1.0）→ ~/.config/opencode/skills/opencode-skill-creator-zh
+写入（4）：SKILL.md  agents/analyzer.md  references/schemas.md  templates/eval-review.html
+跳过（白名单外）：dist/  test/
+状态：~/.config/opencode/skills/.skill-zh-state/opencode-skill-creator-zh.json（版本、属主清单与备份都在技能目录外）
+下一步：重启 OpenCode 使技能重新加载
 ```
 
-失败示例（有冲突，未覆盖）：
+带同名冲突时追加（路径为实际探测结果）：
 
 ```text
-错误：检测到同名技能与本地改动，未写入：~/.claude/skills/opencode-skill-creator-zh
-改法：先看全貌 skill_zh install --dry-run；确认要换成本包版本再跑 skill_zh install --force
+探测：发现 1 处当前生效的同名技能（只提示，不改写任何外部目录）
+  ~/.claude/skills/opencode-skill-creator-zh（外部 .claude（用户级），当前生效：是）
+处置（任选其一）：
+  - 把 ~/.claude/skills/opencode-skill-creator-zh/SKILL.md 改名为 SKILL.md.disabled
+  - 把 ~/.claude/skills/opencode-skill-creator-zh 整个移出任何 skills/ 路径
+  - 改该技能 frontmatter 的 name（避免同名覆盖，不等于禁用）
+  - 在 OpenCode 配置里用 permission deny 拦掉该技能
+  - 设 OPENCODE_DISABLE_EXTERNAL_SKILLS=1（只关 .claude 用 OPENCODE_DISABLE_CLAUDE_CODE_SKILLS=1）
+```
+
+带本地改动（未加 `--force`）：
+
+```text
+安装：保留本地 SKILL.md，未覆盖（0.1.0）→ ~/.config/opencode/skills/opencode-skill-creator-zh
+跳过：SKILL.md（本地已改动，保留）
+本地改动：本地 1300 字节 / 包内 1204 字节，首个差异在第 8 行
+改法：确认要换成本包版本再运行 skill_zh install --force（旧文件会备份到状态目录）
+```
+
+失败示例（`--dir` 缺值）：
+
+```text
+错误：缺少参数 --dir <目标根>
+改法：运行 skill_zh install --dir ./skills
 可用：skill_zh help
 ```
 
-约束口径见 [design/技能安装与目录问题.md](design/技能安装与目录问题.md)（对应 SPEC `R6.1` 的 I1–I5）。
+排障：`SKILL_ZH_SKILL_SOURCE=<目录>` 可让 install / 启动钩子临时改用指定技能目录（本地开发与测试用）；正常使用不需要设置。`SKILL_ZH_NO_STARTUP_INSTALL=1` 关闭插件启动时的静默安装。
 
 ## 本版不提供的上游能力
 

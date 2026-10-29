@@ -7,7 +7,7 @@
  * 流式映射、嵌套映射与多文档流都不在支持范围内。
  */
 
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 /** SKILL.md 的解析结果：技能名、描述与文件原文。 */
@@ -182,6 +182,25 @@ function parseBlockScalar(
 }
 
 /**
+ * 定位技能目录里的 SKILL.md（文件名不区分大小写，`skill.md` 等价）。
+ *
+ * @param skillPath 技能目录
+ * @returns 实际文件路径；不存在时为 `null`
+ */
+export function resolveSkillMdPath(skillPath: string): string | null {
+  const exact = join(skillPath, "SKILL.md");
+  if (existsSync(exact)) return exact;
+  try {
+    for (const entry of readdirSync(skillPath)) {
+      if (entry.toLowerCase() === "skill.md") return join(skillPath, entry);
+    }
+  } catch {
+    // 目录读不到按「没有 SKILL.md」处理，具体错误由调用方报。
+  }
+  return null;
+}
+
+/**
  * 解析 SKILL.md，返回技能名、描述与文件原文。
  *
  * description 既可以是单行标量，也可以是 `|`/`>` 块标量（头部语法见上），其截断、
@@ -192,7 +211,9 @@ function parseBlockScalar(
  * @throws 缺少开头或结尾的 `---` 分隔符时抛出错误
  */
 export function parseSkillMd(skillPath: string): SkillMeta {
-  const content = readFileSync(join(skillPath, "SKILL.md"), "utf-8");
+  const skillMdPath = resolveSkillMdPath(skillPath);
+  if (skillMdPath === null) throw new Error("SKILL.md not found");
+  const content = readFileSync(skillMdPath, "utf-8");
   const lines = content.split("\n");
 
   if (lines[0].trim() !== "---") {
