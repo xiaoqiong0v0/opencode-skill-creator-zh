@@ -4,7 +4,7 @@
 
 本插件只暴露 **1 个工具** `skill_zh`，入参只有一个 `args` 字符串。工具 description 为 `中文技能工坊：新建、校验、评测、优化并打包 OpenCode 技能`（33 字符），参数细节全部交给 `skill_zh help`。
 
-> 当前状态：`src/` 骨架已建（B0/B1 完成、B2 单工具壳已落地），子命令业务待 B3/B4；相对路径的解析基准见下节「路径解析基准」。
+> 当前状态：B0/B1/B2 完成，B3 已接真实现——`new` / `validate` 可用；`eval` / `optimize` / `package` 待 B4、`install` 待 B5，调用会返回「尚未实现」三段式。相对路径的解析基准见下节「路径解析基准」。
 
 ## 通用约定
 
@@ -16,7 +16,7 @@
 | 路径基准 | 相对路径按**当前会话的项目目录**解析（见下节「路径解析基准」）；工具参数是文件系统路径，不是 shell 命令 |
 | 输出 | 纯文本，直接回给模型；失败也返回文本，不抛原始堆栈 |
 | 失败格式 | 统一三段式：`错误：` / `改法：` / `可用：skill_zh help` |
-| 调试 | 调用进程设 `SKILL_ZH_DEBUG=1` 时输出执行细节与原始错误；默认不外泄内部路径与堆栈（B3 落地） |
+| 调试 | `SKILL_ZH_DEBUG=1`（打印执行细节与原始错误）**尚未实现**，当前调试入口是 `SKILL_ZH_LOG_DISABLE=1` 关闭日志、`~/.config/opencode/plugin-logger.jsonc` 的 `enabled` 打开日志；默认不外泄内部路径与堆栈 |
 
 失败输出模板：
 
@@ -57,8 +57,8 @@ skill_zh —— 中文 OpenCode 技能创建工具（CLI 风格单工具）
 
 子命令：
   help      显示本帮助，覆盖全部子命令与示例
-  new       按中文模板生成技能骨架（SKILL.md + references/）
-  validate  校验 SKILL.md 结构、frontmatter 字段与 description 长度
+  new       按中文模板生成技能骨架（SKILL.md + references/），--force 覆盖前留 .bak
+  validate  校验 SKILL.md 结构与 frontmatter，--strict 把长度/命名提示升级为错误
   eval      跑触发率评测，输出通过率与失败用例
   optimize  按评测失败反复改写 description（先训练/测试集切分）
   package   只导出可分发的技能目录（--out 必填）
@@ -74,35 +74,46 @@ skill_zh —— 中文 OpenCode 技能创建工具（CLI 风格单工具）
 
 ```text
 错误：未知子命令 "validat"
-改法：可用子命令：help / new / validate / eval / optimize / package
+改法：可用子命令：help / new / validate / eval / optimize / package / install
 可用：skill_zh help
 ```
 
 ## skill_zh new
 
-按中文模板生成技能骨架：`<技能名>/SKILL.md` + `<技能名>/references/`。
+按中文模板（仓库 `templates/`）生成技能骨架：`<技能名>/SKILL.md` + `<技能名>/references/`。
 
 | 参数 | 必填 | 默认 | 说明 |
 |---|---|---|---|
-| `<技能名>` | 是 | — | kebab-case，同时作为目录名与 frontmatter `name` |
-| `--dir <目录>` | 否 | `./skills` | 父目录，不存在则创建 |
-| `--force` | 否 | 关 | 目标目录已存在时允许覆盖已生成文件（不动用户自建文件） |
+| `<技能名>` | 是 | — | 必须匹配 `^[a-z0-9]+(-[a-z0-9]+)*$` 且 ≤ 64 字符；同时作为目录名与 frontmatter `name` |
+| `--dir <目录>` | 否 | 当前会话项目目录 | 父目录，不存在则创建；相对路径按「路径解析基准」一节解析 |
+| `--force` | 否 | 关 | 目标目录已存在且非空时允许覆盖：只重写 `SKILL.md` 与 `references/示例.md`，被覆盖的两个文件各留一份 `.bak`（输出点名「已备份：…」），不动用户自建文件 |
+
+目标目录已存在且**非空**时默认拒绝（空目录可直接生成）。生成的 `description` 是带引号的 TODO 占位（`TODO: 用一句话写清做什么 + 何时触发 + 不适用，≤ 60 字符`），`references/示例.md` 开头写明「何时读本文件」。
 
 输出示例：
 
 ```text
 已生成技能骨架：./skills/api-doc-writer
-  SKILL.md            （frontmatter：name、description；正文为待填大纲）
-  references/         （按需加载的参考资料，先放占位说明）
+  SKILL.md               （frontmatter：name、description 占位，正文为待填大纲）
+  references/示例.md      （按需加载的参考资料，文件开头写明何时读）
 下一步：
-  skill_zh validate ./skills/api-doc-writer
+  1. 编辑 ./skills/api-doc-writer/SKILL.md，把 description 的 TODO 换成「做什么 + 何时触发 + 不适用」
+  2. 运行 skill_zh validate ./skills/api-doc-writer 复核结构
 ```
 
 失败示例（目标已存在）：
 
 ```text
-错误：目录已存在，未覆盖：./skills/api-doc-writer
-改法：换一个技能名，或运行 skill_zh new api-doc-writer --dir ./skills --force
+错误：目标目录已存在且非空，未覆盖：./skills/api-doc-writer
+改法：换一个技能名，或运行 skill_zh new api-doc-writer --dir ./skills --force（覆盖前会把旧 SKILL.md 备份为 SKILL.md.bak）
+可用：skill_zh help
+```
+
+失败示例（技能名不合法）：
+
+```text
+错误：技能名不是 kebab-case：ApiDoc_Writer（只允许小写字母、数字与单个连字符）
+改法：改用 kebab-case 名重试，例如 skill_zh new api-doc-writer --dir ./skills
 可用：skill_zh help
 ```
 
@@ -113,31 +124,58 @@ skill_zh —— 中文 OpenCode 技能创建工具（CLI 风格单工具）
 | 参数 | 必填 | 说明 |
 |---|---|---|
 | `<技能目录>` | 是 | 含 `SKILL.md` 的目录 |
-| `--strict` | 否 | 把 description 长度与命名规范从「提示」升级为「错误」（判失败 + 三段式）；缺省只提示 |
+| `--strict` | 否 | 把 description 长度与命名规范从「提示」升级为「错误」（判失败）；缺省只提示、不影响「通过」结论 |
 
-输出示例：
+每条问题都给 `问题：` + `文件:行`（能定位时）+ `改法：`，改法可直接照做；**同一目录的多处问题一次报全**（不是只报第一条），错误与提示分开计数、一并输出（不必先修完错误再跑一次才看见提示）。结论有两种：`通过` / `未通过（N 处错误[, M 处提示]）`；通过时同时输出 description 实际字符数。
+
+输出示例（通过）：
 
 ```text
 校验 ./skills/api-doc-writer：通过
-  frontmatter  合法（name、description）
-  name         与目录名一致
+  name         api-doc-writer（与目录名一致）
   description  118 字符（上限 1024）
-  references/  3 个文件
 ```
 
-失败示例（描述超长，逐条给改法）：
+输出示例（description 超长，缺省只提示）：
 
 ```text
-错误：description 超长：1380 字符，上限 1024 字符
-改法：编辑 ./skills/api-doc-writer/SKILL.md 的 frontmatter description，把细则移到正文或 references/，只保留「做什么 + 何时触发 + 不适用边界」
-可用：skill_zh help
+校验 ./skills/api-doc-writer：通过
+  name         api-doc-writer（与目录名一致）
+  description  1030 字符（上限 1024）
+提示（1 处，缺省不判失败；加 --strict 会判失败）：
+  [提示 1] 问题：description 超长：1030 字符，上限 1024 字符
+           文件：./skills/api-doc-writer/SKILL.md:3
+           改法：把细则移到正文或 references/，description 只保留「做什么 + 何时触发 + 不适用边界」
 ```
 
-失败示例（路径不存在）：
+失败示例（同一份目录加 `--strict`）：
+
+```text
+校验 ./skills/api-doc-writer：未通过（1 处错误）
+  [错误 1] 问题：description 超长：1030 字符，上限 1024 字符
+           文件：./skills/api-doc-writer/SKILL.md:3
+           改法：把细则移到正文或 references/，description 只保留「做什么 + 何时触发 + 不适用边界」
+```
+
+失败示例（同时有错误与提示：一次列全）：
+
+```text
+校验 ./skills/api-doc-writer：未通过（2 处错误，1 处提示）
+  [错误 1] 问题：frontmatter 缺少必填字段 name
+           文件：./skills/api-doc-writer/SKILL.md
+           改法：在 ./skills/api-doc-writer/SKILL.md 的 frontmatter 里加一行 name: api-doc-writer（小写 kebab-case，与目录名一致）
+  [错误 2] 问题：目录名与 frontmatter name 不一致：目录 api-doc-writer，name api-doc-writer-zh
+           文件：./skills/api-doc-writer/SKILL.md
+           改法：把目录重命名为 api-doc-writer-zh，或把 ./skills/api-doc-writer/SKILL.md 的 name 改为 api-doc-writer
+  [提示 1] 问题：name「ApiDoc_Writer」不是 kebab-case（只允许小写字母、数字与单个连字符）
+           改法：把 name 改成全小写、单词间用单个连字符的形式（例如 apidoc-writer）
+```
+
+失败示例（路径不存在；目录名不是 kebab-case 时改法不推荐用这个非法名新建）：
 
 ```text
 错误：技能目录不存在：./skills/api-doc
-改法：确认目录名拼写，或运行 skill_zh new api-doc-writer --dir ./skills 新建一个
+改法：确认目录名拼写，或运行 skill_zh new api-doc --dir ./skills 新建一个
 可用：skill_zh help
 ```
 

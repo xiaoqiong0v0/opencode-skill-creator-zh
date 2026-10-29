@@ -12,10 +12,8 @@ import { formatError } from "../dist/cli/errors.js";
 import { HELP_TEXT } from "../dist/cli/help.js";
 import { parseArgs } from "../dist/cli/parse-args.js";
 
-/** 本阶段只留骨架、尚未接实现的子命令 → 期望的首行（`install` 属 B5，文案单独区分）。 */
+/** 尚未接实现的子命令 → 期望的首行（`new` / `validate` 已在 B3 接真实现，见 cli-new/cli-validate）。 */
 const PENDING_SUBCOMMANDS = {
-  new: "错误：子命令尚未实现",
-  validate: "错误：子命令尚未实现",
   eval: "错误：子命令尚未实现",
   optimize: "错误：子命令尚未实现",
   package: "错误：子命令尚未实现",

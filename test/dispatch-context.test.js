@@ -22,7 +22,8 @@ test("help 不读项目目录，ctx 为空也照常返回完整帮助", () => {
 });
 
 test("占位子命令把 ctx 带到 handler：输出里能读到项目目录", () => {
-  const lines = dispatch("validate ./skills/x", CTX).split("\n");
+  // `new` / `validate` 已接真实现（B3），这里用仍是占位的 `package` 守这条透传约定。
+  const lines = dispatch("package ./skills/x", CTX).split("\n");
 
   assert.equal(lines.length, 3);
   assert.equal(lines[0], "错误：子命令尚未实现");

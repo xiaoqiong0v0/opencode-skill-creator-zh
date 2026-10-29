@@ -32,8 +32,8 @@ export const HELP_TEXT = `skill_zh —— 中文 OpenCode 技能创建工具（C
 
 用法：
   skill_zh help
-  skill_zh new <技能名> [--dir <目录>]
-  skill_zh validate <技能目录>
+  skill_zh new <技能名> [--dir <目录>] [--force]
+  skill_zh validate <技能目录> [--strict]
   skill_zh eval <技能目录> [--runs <次数>] [--workers <并发数>]
   skill_zh optimize <技能目录> [--iterations <轮数>]
   skill_zh package <技能目录> --out <产物路径>
@@ -41,8 +41,8 @@ export const HELP_TEXT = `skill_zh —— 中文 OpenCode 技能创建工具（C
 
 子命令：
   help      显示本帮助，覆盖全部子命令与示例
-  new       按中文模板生成技能骨架（SKILL.md + references/）
-  validate  校验 SKILL.md 结构、frontmatter 字段与 description 长度
+  new       按中文模板生成技能骨架（SKILL.md + references/），--force 覆盖前留 .bak
+  validate  校验 SKILL.md 结构与 frontmatter，--strict 把长度/命名提示升级为错误
   eval      跑触发率评测，输出通过率与失败用例
   optimize  按评测失败反复改写 description（先训练/测试集切分）
   package   只导出可分发的技能目录（--out 必填）
@@ -60,7 +60,7 @@ export const HELP_TEXT = `skill_zh —— 中文 OpenCode 技能创建工具（C
   skill_zh install --force
 
 说明：
-  - install 属于 B5 实现，当前调用会返回「尚未实现」三段式；用法按本节规划。
+  - new / validate 已可用；eval / optimize / package 属 B4、install 属 B5，调用会返回「尚未实现」三段式。
   - 失败一律三段式：错误（哪里不对）→ 改法（可直接照做的命令）→ 可用：skill_zh help。
   - 缺参、路径不存在、参数非法等失败都给出一句可复制执行的改法，例如
     「改法：运行 skill_zh validate ./skills/my-skill」。

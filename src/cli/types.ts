@@ -52,6 +52,6 @@ export interface HandlerInput {
   ctx: DispatchContext;
 }
 
-/** 子命令实现签名；当前 5 个未实现子命令共用一个占位 handler。 */
+/** 子命令实现签名；尚未实现的 `eval` / `optimize` / `package` 共用一个占位 handler。 */
 export type SubcommandHandler = (input: HandlerInput) => DispatchResult;
 

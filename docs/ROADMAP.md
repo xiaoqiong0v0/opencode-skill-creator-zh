@@ -6,7 +6,7 @@
 
 `.tmp/old/` **不是上游原文**，而是含 2 个 fork 提交的中间态（`69bcb56` 汉化技能、`221bb4e` 中文 CLI 骨架）：`plugin/package.json` 已改名、`plugin/skill/` 已汉化、`plugin/single-tool.ts` 已有 CLI 原型；**只有 `plugin/lib/**` 与基线 `d4383924` 一致**。B2/B3 迁 `lib/` 时一律以 `d4383924` 为基线，其余文件只当 fork 中间态参考，不得当作上游原文引用。
 
-状态：B0、B1 已完成；B2–B6 未开始（B2 = 迁 `lib/`）。
+状态：B0–B3 已完成（B3 于 2026-10-29 落地并实测，见该节验收）；B4–B6 未开始。
 
 ---
 
@@ -38,14 +38,15 @@
 - **涉及文件**：`src/index.ts`、`src/cli/parse-args.ts`、`src/cli/dispatch.ts`、`src/cli/help.ts`、`src/cli/errors.ts`、`test/cli-help.test.js`、`test/cli-errors.test.js`。
 - **验收方式**：工具列表新增 1 项；`src/` 下工具注册调用点计数 = 1（R1）；`skill_zh help` 覆盖 6 子命令 + 6 示例（R3）；description 33 字符（R4）；4 类失败（未知子命令 / 缺参 / 路径不存在 / 非法参数值）满足三段式（R5）；`npm test` 全绿。`SKILL_ZH_DEBUG=1` 的验收（原本列在本批）随实现顺延至 B3。
 
-## B3 逻辑迁入与 `new` / `validate`
+## B3 逻辑迁入与 `new` / `validate`（已完成）
 
 - **内容**：
   - 把上游 `plugin/lib/` 迁到 `src/lib/`（`validate.ts`、`utils.ts`、`process.ts`、`skill-install.ts` 等），**以基线 `d4383924` 为准**（`.tmp/old/plugin/lib/**` 与该基线一致），仅改导入路径与必要的中文化，不重构算法。
   - `new`：用 `templates/`（中文模板）生成 `SKILL.md` + `references/`；目标已存在时拒绝并提示 `--force`。
-  - `validate`：接 `validateSkill`，输出中文结论 + 逐条问题的改法（含 description 长度、目录名与 `name` 一致性）；`--strict` 把 description 长度与命名规范从「提示」升级为「错误」（非零退出 + 三段式），缺省仍为提示。
-- **涉及文件**：`src/lib/**`（迁入）、`src/cli/new.ts`、`src/cli/validate.ts`、`src/cli/help.ts`（`validate` 用法补 `--strict`）、`templates/**`、`test/new.test.js`、`test/validate.test.js`。
-- **验收方式**：对一个真实技能目录跑通 `new` → `validate`；对故意写坏的 `SKILL.md`（缺 `name` / 描述超长 / 目录名不匹配）逐条给出可照做的改法；同一份含「描述超长」的目录在缺省下只提示、加 `--strict` 后判失败并走三段式；`new` 覆盖保护生效；`npm test` 全绿。
+  - `validate`：接 `validateSkill`，输出中文结论 + 逐条问题的改法（含 description 长度、目录名与 `name` 一致性），错误与提示分开计数、一并输出；`--strict` 把 description 长度与命名规范从「提示」升级为「错误」（结论改判 `未通过（N 处错误…）`，退出码非 0），缺省仍为提示。
+- **涉及文件**：`src/lib/**`（迁入）、`src/cli/new.ts`、`src/cli/validate.ts`、`src/cli/help.ts`（`validate` 用法补 `--strict`）、`templates/**`、`test/new.test.js`、`test/validate.test.js`。（实际落地：测试文件为 `test/cli-new.test.js` / `test/cli-validate.test.js`，另同批改 `src/cli/dispatch.ts` 接线、`package.json` 的 `files` 加 `templates`，并调整 `test/cli-errors.test.js`、`test/dispatch-context.test.js` 里「占位子命令」的取样对象。）
+- **验收方式**：对一个真实技能目录跑通 `new` → `validate`；对故意写坏的 `SKILL.md`（缺 `name` / 描述超长 / 目录名不匹配）逐条给出可照做的改法；同一份含「描述超长」的目录在缺省下只提示、加 `--strict` 后判 `未通过（1 处错误）`（同批问题全部列出，不是三段式）；`new` 覆盖保护生效；`npm test` 全绿。
+- **2026-10-29 实测结论**：`npm run typecheck` 退出码 0；`npm test` 206 例（205 通过、0 失败、1 个既有 skip：`findProjectRoot` 兜底分支在本机不可达），其中新增 `cli-new` 5 例、`cli-validate` 8 例全绿。临时目录手工跑通 `new demo-skill --dir .` → `validate demo-skill --strict`（结论「通过」，description 36 字符）；对 1030 字符 description 的目录，缺省输出「通过 + 1 处提示」、加 `--strict` 输出「未通过（1 处问题）」并定位到 `SKILL.md:3`。可失败性：把 `strict` 判定改成常量 `false` 后 `cli-validate` 立刻 2 例失败，恢复后回到全绿。**遗留**：B2 顺延的 `SKILL_ZH_DEBUG=1` 调试开关未在本批落地，仍待补。
 
 ## B4 `eval` / `optimize`
 
