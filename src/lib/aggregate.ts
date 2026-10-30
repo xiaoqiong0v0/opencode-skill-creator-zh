@@ -10,7 +10,7 @@
  *   - 旧布局：<dir>/runs/eval-N/{config}/run-N/grading.json
  */
 
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
 
 import { logErrorSummary } from "./debug.js";
@@ -222,24 +222,106 @@ function calculateStats(values: number[]): Stats {
 }
 
 /**
+ * 把底层错误压成一行原因（优先错误码，便于用户搜索与定位）。
+ *
+ * @param error 捕获到的异常
+ * @returns 错误码（`ENOENT`、`ENOTDIR` 等）；没有错误码时退回 message
+ */
+function reasonOf(error: unknown): string {
+  return error instanceof Error
+    ? ((error as NodeJS.ErrnoException).code ?? error.message)
+    : String(error);
+}
+
+/**
+ * 判断某个路径当前是否解析为目录（跟随符号链接）。
+ *
+ * @param path 待判定的路径
+ * @returns 解析成功且是目录时为 `true`；不存在、断链、普通文件、无权限一律 `false`
+ */
+function isDirectory(path: string): boolean {
+  try {
+    return statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/** 单个目录项的判定结果：无法解析时 `error` 为具体异常，否则只给出是否目录。 */
+interface DirEntryProbe {
+  isDir: boolean;
+  error?: unknown;
+}
+
+/**
+ * 判定一个目录项是否是（或指向）目录。
+ *
+ * 先 `lstat` 看条目**本身**：`readdirSync` 会把断链符号链接 / junction 也列出来，
+ * 直接 `stat` 会在目标缺失时抛 `ENOENT`。是链接时再 `stat` 探目标——不能只看 `lstat`，
+ * 否则「指向目录的合法链接」会被误判成非目录。任一步抛错都归为「不可解析」。
+ *
+ * @param full 目录项的完整路径
+ * @returns 判定结果；`error` 非空表示该项无法解析
+ */
+function probeDirEntry(full: string): DirEntryProbe {
+  let stats: ReturnType<typeof lstatSync>;
+  try {
+    stats = lstatSync(full);
+  } catch (error) {
+    return { isDir: false, error };
+  }
+
+  if (stats.isSymbolicLink()) {
+    try {
+      stats = statSync(full);
+    } catch (error) {
+      return { isDir: false, error };
+    }
+  }
+
+  return { isDir: stats.isDirectory() };
+}
+
+/**
  * 列出目录下满足命名规则的子目录（绝对路径，按字典序排序）。
  *
- * 与上游 `workflow-guard` 的同类实现一样，目录项用 `statSync` 判断（跟随符号链接），
- * 断链符号链接会让本函数抛 `ENOENT`；该行为与上游一致，未修。
+ * 目录项逐个 `probeDirEntry` 判定（`lstat` + 链接探目标）：断链链接、不可解析项**跳过**
+ * 并打一条中文警告，父目录不存在 / 不是目录 / 列不出来时按「没有子目录」返回。这样一次
+ * 坏链接不会让整次汇总中止——与 `loadRunResults` 自己声明的「只警告并跳过，不中断整体
+ * 汇总」口径一致。本模块没有 `issues` 通道，跳过原因只能走 `console.error`。
  *
  * @param dir 待扫描的父目录
  * @param pattern 目录名需匹配的正则；省略则不按名字过滤
- * @returns 匹配的子目录路径数组；父目录不存在时返回空数组
+ * @returns 匹配的子目录路径数组；父目录不存在 / 不可解析 / 不是目录时返回空数组
  */
 function sortedDirs(dir: string, pattern?: RegExp): string[] {
-  if (!existsSync(dir)) return [];
-  return readdirSync(dir)
-    .filter((name) => {
-      const full = join(dir, name);
-      return statSync(full).isDirectory() && (!pattern || pattern.test(name));
-    })
-    .sort()
-    .map((name) => join(dir, name));
+  // 父目录可能不存在，也可能是同名普通文件或断链链接：一律按「没有子目录」处理，
+  // 交给调用方按业务口径告警（例如「未找到任何 eval 目录」），不在这里抛 ENOTDIR。
+  if (!isDirectory(dir)) return [];
+
+  let entries: string[];
+  try {
+    entries = readdirSync(dir);
+  } catch (error) {
+    console.error(`警告：目录不可读取，已跳过：${dir}（${reasonOf(error)}）`);
+    return [];
+  }
+
+  const matched: string[] = [];
+  for (const name of entries) {
+    const full = join(dir, name);
+    const probe = probeDirEntry(full);
+    if (probe.error !== undefined) {
+      console.error(`警告：目录项不可解析，已跳过：${full}（${reasonOf(probe.error)}）`);
+      continue;
+    }
+    // 普通文件是正常内容（`eval_metadata.json`、同名的 `runs` 占位文件等），静默忽略。
+    if (!probe.isDir) continue;
+    if (pattern && !pattern.test(name)) continue;
+    matched.push(full);
+  }
+
+  return matched.sort();
 }
 
 // ---------------------------------------------------------------------------
@@ -249,22 +331,22 @@ function sortedDirs(dir: string, pattern?: RegExp): string[] {
 /**
  * 扫描基准目录，把每个 `grading.json` 读成一条运行结果。
  *
- * 目录布局先探测 `runs/`（旧布局），没有再退回基准目录本身（工作区布局）。单个
- * `run-*` 目录的问题（名字不合规、缺 `grading.json`、JSON 损坏）只打印警告并跳过，
- * 不中断整体汇总——与上游一致。
+ * 目录布局先探测 `runs/`（旧布局，**必须是目录**才算），没有再退回基准目录本身（工作区
+ * 布局）。单个 `run-*` 目录的问题（名字不合规、缺 `grading.json`、JSON 损坏）只打印警告
+ * 并跳过，不中断整体汇总——与上游一致；断链链接 / 同名文件同理，不抛底层错误。
  *
  * @param benchmarkDir 基准目录
  * @returns 按配置名分组的结果与已排序的 eval_id 列表
  */
 function loadRunResults(benchmarkDir: string): LoadResultsOutput {
-  // 两种目录布局都要支持
+  // 两种目录布局都要支持；`runs` 必须**是目录**才算旧布局——同名普通文件（占位残留、
+  // 手工误建）按「不存在」处理，否则随后的 readdirSync 会抛 ENOTDIR 让整次汇总中止。
   const runsDir = join(benchmarkDir, "runs");
-  let searchDir: string;
-  if (existsSync(runsDir)) {
-    searchDir = runsDir;
-  } else if (sortedDirs(benchmarkDir, /^eval-/).length > 0) {
-    searchDir = benchmarkDir;
-  } else {
+  const usesLegacyLayout = isDirectory(runsDir);
+  // eval 目录只扫一次：扫两遍会让同一坏链接的告警重复出现。
+  const evalDirs = sortedDirs(usesLegacyLayout ? runsDir : benchmarkDir, /^eval-/);
+
+  if (!usesLegacyLayout && evalDirs.length === 0) {
     console.error(`未在 ${benchmarkDir} 或 ${runsDir} 找到任何 eval 目录`);
     return { results: {}, evalIds: [] };
   }
@@ -272,7 +354,7 @@ function loadRunResults(benchmarkDir: string): LoadResultsOutput {
   const results: Record<string, RunResult[]> = {};
   const evalIds = new Set<number | string>();
 
-  for (const [evalIdx, evalDir] of sortedDirs(searchDir, /^eval-/).entries()) {
+  for (const [evalIdx, evalDir] of evalDirs.entries()) {
     const metadataPath = join(evalDir, "eval_metadata.json");
     let evalId: number | string = evalIdx;
     if (existsSync(metadataPath)) {

@@ -6,7 +6,7 @@
  */
 
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
@@ -56,6 +56,27 @@ const captureStderr = (fn) => {
   } finally {
     console.error = original;
   }
+};
+
+/**
+ * 建一个目录项链接，按给定类型依次尝试（Windows 上 junction 通常免符号链接权限）。
+ *
+ * @param {string} target 链接目标（断链场景传不存在的路径）
+ * @param {string} link 链接路径
+ * @param {string[]} types 依次尝试的链接类型
+ * @returns {{ ok: boolean, code?: string }} 是否建成；失败时带最后一个错误码
+ */
+const createLink = (target, link, types) => {
+  let lastError;
+  for (const type of types) {
+    try {
+      symlinkSync(target, link, type);
+      return { ok: true };
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  return { ok: false, code: lastError?.code ?? "unknown" };
 };
 
 /** 两个配置各两次运行：通过率、耗时与 token 都取可手算的值。 */
@@ -201,6 +222,110 @@ test("旧布局 runs/ 也能读，耗时与 token 可退回同目录的 timing.j
     assert.equal(benchmark.runs[0].result.time_seconds, 7);
     assert.equal(benchmark.runs[0].result.tokens, 42);
     assert.equal(benchmark.runs[0].result.pass_rate, 1);
+  });
+});
+
+test("runs 是同名文件或基准路径本身不是目录时不抛错，各按「找不到 eval 目录」告警一条", () => {
+  // 台账第 6 条（已修）：`runs` 必须是目录才算旧布局，否则 readdirSync 会抛 ENOTDIR；
+  // 父目录不是目录时 sortedDirs 直接返回空（守卫），不抛错。
+  withTempDir((dir) => {
+    const asFile = join(dir, "runs-is-file");
+    mkdirSync(asFile, { recursive: true });
+    writeFileSync(join(asFile, "runs"), "占位文件");
+
+    const fromFile = captureStderr(() => generateBenchmark(asFile));
+
+    // 同名文件按「不存在」处理：退回工作区布局探测，仍没有 eval-* 目录 ⇒ 一条告警、空汇总。
+    assert.equal(fromFile.messages.length, 1);
+    assert.match(fromFile.messages[0], /^未在 .+ 或 .+ 找到任何 eval 目录$/);
+    assert.deepEqual(fromFile.value.runs, []);
+    assert.deepEqual(fromFile.value.metadata.evals_run, []);
+    assert.equal(fromFile.value.metadata.runs_per_configuration, 0);
+
+    // 基准路径本身是普通文件：父目录「是目录」守卫生效，同样只有一条告警。
+    const asBench = join(dir, "bench.bak");
+    writeFileSync(asBench, "不是目录");
+
+    const fromFileParent = captureStderr(() => generateBenchmark(asBench));
+
+    assert.equal(fromFileParent.messages.length, 1);
+    assert.match(fromFileParent.messages[0], /^未在 .+ 或 .+ 找到任何 eval 目录$/);
+    assert.deepEqual(fromFileParent.value.runs, []);
+  });
+});
+
+test("断链符号链接（benchmark 根与 runs/ 内）被跳过并各告警一条，不影响其余汇总", (t) => {
+  // 台账第 6 条（已修）：目录项改为 lstat + 链接探目标，断链链接不再让 statSync 抛 ENOENT。
+  withTempDir((dir) => {
+    const missingTarget = join(dir, "does-not-exist");
+
+    // 场景一：工作区布局，benchmark 根上一条断链链接（名字符合 eval-*）
+    const rootBench = join(dir, "root-bench");
+    writeTwoConfigWorkspace(rootBench);
+    const rootLink = createLink(missingTarget, join(rootBench, "eval-broken"), [
+      "junction",
+      "file",
+    ]);
+
+    // 场景二：旧布局，断链链接在 runs/ 里
+    const runsBench = join(dir, "runs-bench");
+    writeJson(join(runsBench, "runs", "eval-1", "with_skill", "run-1", "grading.json"), {
+      summary: { pass_rate: 1, passed: 1, failed: 0, total: 1 },
+    });
+    const runsLink = createLink(missingTarget, join(runsBench, "runs", "eval-ghost"), [
+      "junction",
+      "file",
+    ]);
+
+    if (!rootLink.ok || !runsLink.ok) {
+      // 构造不出场景就明确 skip，绝不因为写不出 fixture 而假通过。
+      const code = !rootLink.ok ? rootLink.code : runsLink.code;
+      t.skip(`当前环境无法创建符号链接（${code}）`);
+      return;
+    }
+
+    const fromRoot = captureStderr(() => generateBenchmark(rootBench));
+
+    // 只多出跳过断链链接这一条告警（不是「找不到 eval 目录」），合法 eval 目录照常汇总。
+    assert.equal(fromRoot.messages.length, 1);
+    assert.match(fromRoot.messages[0], /^警告：目录项不可解析，已跳过：.+eval-broken（.+/);
+    assert.equal(fromRoot.value.runs.length, 4);
+    assert.deepEqual(fromRoot.value.metadata.evals_run, [1]);
+
+    const fromRuns = captureStderr(() => generateBenchmark(runsBench));
+
+    assert.equal(fromRuns.messages.length, 1);
+    assert.match(fromRuns.messages[0], /^警告：目录项不可解析，已跳过：.+eval-ghost（.+/);
+    assert.equal(fromRuns.value.runs.length, 1);
+    assert.deepEqual(fromRuns.value.metadata.evals_run, [1]);
+  });
+});
+
+test("eval-0 是指向目录的合法符号链接时仍被当作 eval 目录参与汇总", (t) => {
+  // 修复不能顺手把「指向目录的合法链接」判成非目录（那是新的回归）。
+  withTempDir((dir) => {
+    const realEval = join(dir, "real-eval-0");
+    writeJson(join(realEval, "with_skill", "run-1", "grading.json"), {
+      summary: { pass_rate: 1, passed: 1, failed: 0, total: 1 },
+    });
+
+    const bench = join(dir, "bench");
+    mkdirSync(bench, { recursive: true });
+    const link = createLink(realEval, join(bench, "eval-0"), ["junction", "dir"]);
+
+    if (!link.ok) {
+      t.skip(`当前环境无法创建目录符号链接（${link.code}）`);
+      return;
+    }
+
+    const { value: benchmark, messages } = captureStderr(() => generateBenchmark(bench));
+
+    assert.deepEqual(messages, []);
+    assert.equal(benchmark.runs.length, 1);
+    assert.equal(benchmark.runs[0].eval_id, 0);
+    assert.equal(benchmark.runs[0].configuration, "with_skill");
+    assert.deepEqual(benchmark.metadata.evals_run, [0]);
+    assert.equal(benchmark.metadata.runs_per_configuration, 1);
   });
 });
 
