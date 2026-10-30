@@ -1,6 +1,6 @@
 {
   "name": "@xiaoqiong0v0/opencode-skill-creator-zh",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "OpenCode 中文技能工坊：把技能的新建、校验、评测、优化与打包收敛为单个 CLI 风格工具 skill_zh。",
   "main": "./dist/index.js",
