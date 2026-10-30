@@ -226,7 +226,7 @@ test("J1 源码门禁：src/ 内不存在 cpSync(..., { recursive })", () => {
   assert.deepEqual(offenders, []);
 });
 
-test("J2 源码门禁：src/cli/** 与 src/tool.ts 不调用 process.cwd()", () => {
+test("J2 源码门禁：process.cwd() 只允许出现在 bin 入口 src/cli/main.ts", () => {
   const files = [];
   const walk = (dir) => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -238,13 +238,24 @@ test("J2 源码门禁：src/cli/** 与 src/tool.ts 不调用 process.cwd()", () 
   walk("src/cli");
   files.push("src/tool.ts");
 
-  const offenders = files.filter((file) => {
-    const code = readFileSync(file, "utf-8")
+  /** 去掉注释后的源码（注释里写「不读 process.cwd()」不算命中）。 */
+  const stripComments = (file) =>
+    readFileSync(file, "utf-8")
       .replaceAll(/\/\*[\s\S]*?\*\//g, "")
       .replaceAll(/\/\/.*$/gm, "");
-    return code.includes("process.cwd(");
-  });
-  assert.deepEqual(offenders, []);
+
+  const offenders = files
+    .filter((file) => stripComments(file).includes("process.cwd("))
+    .map((file) => file.replaceAll("\\", "/"));
+
+  // 白名单钉死到唯一一个文件：独立 CLI（bin）显式把 cwd 当 directory；插件、dispatch 与
+  // 各子命令仍为 0。新增任何其它 cwd 读取都会让这条断言变红。
+  assert.deepEqual(offenders, ["src/cli/main.ts"]);
+  assert.equal(
+    stripComments("src/cli/main.ts").match(/process\.cwd\(/g)?.length,
+    1,
+    "bin 入口只允许 1 处 process.cwd() 调用",
+  );
 });
 
 // ---------------------------------------------------------------------------

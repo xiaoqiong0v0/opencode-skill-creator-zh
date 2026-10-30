@@ -28,8 +28,8 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { homedir, tmpdir as osTmpdir } from "node:os";
-import { dirname, isAbsolute, join, parse, relative, resolve, sep } from "node:path";
+import { tmpdir as osTmpdir } from "node:os";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import { parse as parseJsonc } from "jsonc-parser";
 
@@ -351,94 +351,6 @@ export function createV2SkillEnumerator(ctx: {
       return null;
     }
   };
-}
-
-/**
- * opencode 自身的运行时目录与用户配置目录：它们不是项目根。
- *
- * 上游 `findProjectRoot()` 只要向上命中 `.opencode` 就返回，于是在 home 之下调用时会把
- * `~/.opencode`（缓存 / 插件数据 / `skills/`）当成项目根 —— 这正是「镜像了错的项目」
- * 的实证来源（见 `docs/design/技能评测隔离问题.md` 坑 B）。
- *
- * @returns 需要跳过的目录绝对路径列表
- */
-function runtimeDirectories(home: string): string[] {
-  return [join(home, ".opencode"), join(home, ".config", "opencode")];
-}
-
-/**
- * 判断候选目录是否是 opencode 运行时/配置目录（含其内部路径）。
- *
- * 用户主目录本身也一并判为「不是项目根」：`~/.opencode/skills` 是运行时目录里的用户级
- * 技能，把它当项目根会镜像来路不明的技能（这正是坑 B 的实证症状）。
- *
- * @param candidate 候选项目根
- * @returns 命中运行时目录时返回 `true`
- */
-function isRuntimeDirectory(candidate: string, home: string): boolean {
-  const canonicalCandidate = canonicalizeForExclusion(candidate);
-  const canonicalHome = canonicalizeForExclusion(home);
-  if (canonicalCandidate === canonicalHome) return true;
-  return runtimeDirectories(home).some((runtimeDir) => {
-    const canonicalRuntime = canonicalizeForExclusion(runtimeDir);
-    return (
-      canonicalCandidate === canonicalRuntime ||
-      isInsidePath(canonicalRuntime, canonicalCandidate)
-    );
-  });
-}
-
-/**
- * 校验候选目录是否具备「项目形态」：含 `.opencode/skills`、`.claude/skills` 或项目配置文档。
- *
- * 只有 `.opencode/` 而无 `skills`/项目配置的目录不算项目（可能是临时目录或运行时目录
- * 的残留），不能作为镜像来源。
- *
- * @param candidate 候选项目根
- * @returns 具备项目形态时返回 `true`
- */
-function hasProjectShape(candidate: string): boolean {
-  return (
-    existsSync(join(candidate, ".opencode", "skills")) ||
-    ROOT_CONFIG_FILES.some((name) => existsSync(join(candidate, name)))
-  );
-}
-
-/**
- * 独立 CLI 场景的兜底取根：从起点逐级向上找**具备项目形态**的目录。
- *
- * 这是唯一保留「向上查找」的地方，仅供进程里拿不到 `ToolContext` 的独立 CLI 使用；
- * 插件路径（`eval` / `optimize` handler）必须直接用 `DispatchContext.directory` /
- * `worktree`，不得调用本函数（见 `docs/SPEC.md` R6.2-J2）。
- *
- * 加固点：① 跳过 `~/.opencode`、`~/.config/opencode` 等运行时目录；② 命中后校验项目
- * 形态；③ 调试开关下打印实际命中的根与来源。一路不命中时回退起点。
- *
- * @param cwd 起始目录；缺省为 `process.cwd()`（仅本兜底函数允许读进程 cwd）
- * @param homeOverride 用户主目录（测试用；缺省 `os.homedir()`）
- * @returns 命中到的项目根，或回退的起始目录
- */
-export function findProjectRoot(cwd?: string, homeOverride?: string): string {
-  const start = resolve(cwd ?? process.cwd());
-  const home = homeOverride ?? homedir();
-  let current = start;
-  const { root } = parse(current);
-
-  while (true) {
-    // 用户主目录及其上层不是项目根：从 home 下的临时目录调用时，向上会先命中 home
-    // （其 .opencode/skills 是运行时目录），这里直接停止，避免把 home 当项目。
-    if (canonicalizeForExclusion(current) === canonicalizeForExclusion(home)) break;
-    if (hasProjectShape(current) && !isRuntimeDirectory(current, home)) {
-      debugLog(`[skill_zh:debug] 项目根（向上命中）：${current}`);
-      return current;
-    }
-    const parent = dirname(current);
-    if (parent === current || parent === root) break;
-    current = parent;
-  }
-
-  debugLog(`[skill_zh:debug] 未命中项目形态，回退当前目录：${start}`);
-  return start;
 }
 
 // ---------------------------------------------------------------------------

@@ -63,16 +63,31 @@ function tokenize(input: string): string[] {
 }
 
 /**
- * 解析一次工具调用的参数。
+ * 解析一次调用的参数。
+ *
+ * 支持两种入参形态：
+ * - 字符串（工具层 `args`）：按空白分词，引号内空白不切分；
+ * - 字符串数组（shell 入口 `process.argv.slice(2)`）：**按 token 原样使用**，不再拼接后重新分词——
+ *   否则 `skill-zh validate "./my skills/a"` 里已被 shell 去掉引号的路径会被空格拆成两个 token。
  *
  * 支持 `--flag value`、`--flag=value` 与单独 `--flag`（值为 `true`）；首段不是标志时作为子命令，
  * 其余非标志 token 进 `positionals`。空串返回 `command: ""`，由调用方等价 `help`。
  *
- * @param args 工具收到的原始 `args` 字符串，例如 `validate ./skills/demo --strict`
+ * @param input 工具收到的原始 `args` 字符串，或 shell 入口的 argv token 数组
  * @returns 子命令、位置参数与标志；同一标志重复出现时后者覆盖前者
  */
-export function parseArgs(args: string): ParsedArgs {
-  const tokens = tokenize(args);
+export function parseArgs(input: string | readonly string[]): ParsedArgs {
+  const tokens = typeof input === "string" ? tokenize(input) : [...input];
+  return parseTokens(tokens);
+}
+
+/**
+ * 把已切分好的 token 列表解析成结构化结果（两种入参形态共用同一套标志语义）。
+ *
+ * @param tokens 已切分的参数 token；首段为子命令
+ * @returns 子命令、位置参数与标志
+ */
+function parseTokens(tokens: readonly string[]): ParsedArgs {
   const [command = "", ...rest] = tokens;
   const positionals: string[] = [];
   const flags: Record<string, FlagValue> = {};

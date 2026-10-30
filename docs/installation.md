@@ -27,6 +27,30 @@ npm i -g @xiaoqiong0v0/opencode-skill-creator-zh
 
 重开 OpenCode 后生效。配置字段名与包名写法以当前 OpenCode 版本为准，B1 批次在真机上核对后回填到本节。
 
+## 独立终端入口 `skill-zh`（bin）
+
+包内提供 `bin: { "skill-zh": "./dist/cli/main.js" }`。全局安装后可直接在任意 shell 里用，**不需要 OpenCode 会话**；未全局安装时用 `npx`：
+
+```sh
+skill-zh help
+npx @xiaoqiong0v0/opencode-skill-creator-zh help
+```
+
+适合长评测 / 长时间优化——把 `--runs`、`--workers` 拉大后放到独立终端跑，不阻塞 OpenCode 会话：
+
+```sh
+cd /path/to/your/project
+skill-zh eval ./skills/api-doc-writer --runs 3 --workers 4
+```
+
+口径与工具完全一致：
+
+- 子命令、参数、三段式文案结构与 `skill_zh` 相同（bin 只是 `runCommand` 的第二个消费方，**不注册工具**）；输出里的命令名会归一成 `skill-zh`，可直接照抄。
+- **目录基准 = 当前 shell 的 cwd**，不向上查找。相对路径按 cwd 解析；请先 `cd` 到项目目录。
+- cwd 位于 `~/.config/opencode` 或 `~/.opencode`（含子树）时会向 stderr 打一条警告，但**仍继续执行**。
+- 成功输出写 **stdout**、退出码 `0`；失败写 **stderr**、退出码 `1`，可直接用 `$?` / `$LASTEXITCODE` 判断。
+- `skill-zh --version` 打印包版本（与 `package.json` 同源）。
+
 ## 方式二：本地插件目录
 
 适合开发调试、离线环境或改源码后立刻验证：

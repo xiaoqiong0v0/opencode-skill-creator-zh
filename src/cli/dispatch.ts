@@ -5,7 +5,7 @@
  * 失败一律转三段式，绝不抛异常。
  *
  * 路径口径（docs/SPEC.md R6.2-J2）：项目目录只来自调用方传入的 `directory`，退一步用
- * `worktree`；**不从 `process.cwd()` 派生，也不向上查找**。上游 `findProjectRoot()` 在 Windows
+ * `worktree`；**不从 `process.cwd()` 派生，也不向上查找**。上游的 cwd 向上取根在 Windows
  * 上会把 `~/.opencode`（运行时目录）当成项目根，是本仓明确不复刻的做法。
  */
 

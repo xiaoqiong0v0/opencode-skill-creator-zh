@@ -9,6 +9,7 @@ opencode-skill-creator-zh/
 ├── src/                源码（唯一编译输入）
 │   ├── index.ts        插件入口：export default { id, server }，唯一 1 处工具注册
 │   ├── cli/            CLI 层：参数解析、子命令分发、help、错误三段式
+│   │   └── main.ts     独立 shell 入口（npm bin `skill-zh`；不注册工具）
 │   └── lib/            执行逻辑（迁自上游，只接线与中文化，不重构算法）
 ├── test/               测试（.js，对编译产物跑）
 ├── docs/               过程与方案文档（本目录）
@@ -21,6 +22,17 @@ opencode-skill-creator-zh/
 
 - 一次性产物放 `.tmp/scratch/`，用完即删；不要往仓库根丢临时文件。
 - 新增顶层目录须在本节目录树与两处索引同批登记：仓库根 [../README.md](../README.md) 的「相关文档」表、[docs/README.md](README.md) 的「文档结构」表；未登记的不进仓。
+
+### 入口点：插件为主、bin 为等价外壳
+
+| 入口 | 落点 | 职责 | 注册工具 |
+|---|---|---|---|
+| 插件（主） | `src/index.ts` → `src/tool.ts` | OpenCode 加载，暴露唯一工具 `skill_zh` | 是，全仓 1 处 |
+| shell bin（外壳） | `src/cli/main.ts` → `dist/cli/main.js` | 独立终端跑同一套子命令（长评测不占会话） | **否** |
+
+- 两个入口共用 `parseArgs` → `runCommand`，**不写第二套参数语义**；bin 只决定 stdout/stderr 与退出码，并在写结果前把共享文案里的 `skill_zh`（按词边界）归一成 `skill-zh`——共享构造器不感知入口，插件路径输出保持不变。
+- bin 的目录语义是 `process.cwd()` 即 `directory`（不向上查找）；这是 `src/cli/**` 里唯一允许读 cwd 的位置，插件与分发层仍为 0（源码门禁见 `test/lib-run-eval-j.test.js`）。
+- `#!` 行只出现在 `src/cli/main.ts` 首行；`tsc` 会原样保留到产物。
 
 ## 2. TypeScript → JavaScript
 
@@ -83,6 +95,7 @@ import { dispatch } from "./cli/dispatch.js"
 | 类型 / 接口 | PascalCase |
 | 常量 | UPPER_SNAKE_CASE（`TOOL_NAME`、`HELP_TEXT`、`TOOL_DESCRIPTION`） |
 | 子命令 | 全小写单词，固定 7 个：`help` `new` `validate` `eval` `optimize` `package` `install` |
+| 入口名 | 工具用下划线 `skill_zh`；shell bin 用连字符 `skill-zh`（npm `bin` 惯例），两者不可混写 |
 
 - 不硬编码文案与路径：工具 description、`help`、错误模板、安装目标目录都提为常量，只留一处实现。
 - 用户可见文案全中文；JSON 输出的**字段名保持英文**（下游脚本兼容），只汉化人读的 `message` 类字段。

@@ -17,6 +17,8 @@
 | 输出 | 纯文本，直接回给模型；失败也返回文本，不抛原始堆栈 |
 | 失败格式 | 统一三段式：`错误：` / `改法：` / `可用：skill_zh help` |
 | 调试 | `SKILL_ZH_DEBUG=1` 输出执行细节到 stderr（评测镜像清单 / 跳过原因、同名技能屏蔽路径等）；默认不外泄内部路径与堆栈。日志另有 `SKILL_ZH_LOG_DISABLE=1` 关闭、`~/.config/opencode/plugin-logger.jsonc` 的 `enabled` 打开 |
+| shell 入口 | `skill-zh`（npm bin）与本工具共用同一套子命令；argv 按 token 解析（含空格路径由 shell 引号处理），成功写 stdout / 退出码 0，失败写 stderr / 退出码 1；输出里的 `skill_zh` 归一成 `skill-zh`，可直接照抄 |
+| shell 目录基准 | 独立 CLI 用 `process.cwd()` 作项目目录，**不向上查找**；cwd 位于 `~/.config/opencode` / `~/.opencode`（含子树）时警告到 stderr 但继续执行 |
 
 失败输出模板：
 
@@ -39,10 +41,12 @@
 
 两条硬口径（对应 SPEC `R6.2` 的 J2）：
 
-- **不用 `process.cwd()` 推断项目根，不做向上查找**。上游 `findProjectRoot()` 从 cwd 一路向上，命中 `.opencode/` 就返回——在 home 之下调用时会把 `~/.opencode`（opencode 的运行时目录：缓存、插件数据、`skills/`）判成项目根，于是评测镜像了错的项目、结果不可信。本版不复刻这条路径。仅「独立 CLI 场景」（进程里没有 `ToolContext`）才允许兜底向上找，且必须排除 `~/.opencode`、`~/.config/opencode` 并校验项目形态，输出里写明实际命中的根。
+- **插件与分发层不用 `process.cwd()` 推断项目根，不做向上查找**。上游 `findProjectRoot()` 从 cwd 一路向上，命中 `.opencode/` 就返回——在 home 之下调用时会把 `~/.opencode`（opencode 的运行时目录：缓存、插件数据、`skills/`）判成项目根，于是评测镜像了错的项目、结果不可信。本版不复刻这条路径。独立 CLI（bin `skill-zh`，进程里没有 `ToolContext`）只把 `process.cwd()` 当项目目录、**同样不向上查找**；cwd 位于 `~/.opencode` / `~/.config/opencode` 时警告到 stderr 但继续执行。
 - **技能可以写在任意目录**：`skill_zh` 不要求技能必须在 `.opencode/skills/` 下，只要路径给对（相对或绝对）就行。`validate` / `eval` / `optimize` / `package` 都接收任意目录；只有涉及「项目里可见哪些技能」的评测画像才与项目根有关。
 
 ## skill_zh help
+
+> shell 等价：`skill-zh help`（或直接运行 `skill-zh`）
 
 打印完整用法：7 个子命令说明 + 每个子命令至少 1 条可复制示例。
 
@@ -82,6 +86,8 @@ skill_zh —— 中文 OpenCode 技能创建工具（CLI 风格单工具）
 
 ## skill_zh new
 
+> shell 等价：`skill-zh new <技能名> --dir <目录> [--force]`
+
 按中文模板（仓库 `templates/`）生成技能骨架：`<技能名>/SKILL.md` + `<技能名>/references/`。
 
 | 参数 | 必填 | 默认 | 说明 |
@@ -120,6 +126,8 @@ skill_zh —— 中文 OpenCode 技能创建工具（CLI 风格单工具）
 ```
 
 ## skill_zh validate
+
+> shell 等价：`skill-zh validate <技能目录> [--strict]`
 
 校验技能目录：`SKILL.md` 是否存在、frontmatter 是否合法、必填字段是否齐全、目录名与 `name` 是否一致、description 长度是否在限内。
 
@@ -182,6 +190,8 @@ skill_zh —— 中文 OpenCode 技能创建工具（CLI 风格单工具）
 ```
 
 ## skill_zh eval
+
+> shell 等价：`skill-zh eval <技能目录> [--runs N] [--workers N] …`（长评测放独立终端跑，不占 OpenCode 会话）
 
 跑触发率评测：按技能目录下的评测集把每条 query 交给被测模型，统计技能是否被选中，输出通过率、逐条结果、失败用例、文本汇总（按 `should_trigger` 分组、重复 query 分组）、镜像汇总与报告路径。本版只输出**文本汇总 + JSON 报告**；HTML 查看器未提供。
 
@@ -270,7 +280,7 @@ skill_zh —— 中文 OpenCode 技能创建工具（CLI 风格单工具）
 三条硬约束（SPEC `R6.2` 的 J1/J2/J3/J9）：
 
 - **不整目录递归拷贝**：镜像一律逐条目/逐文件，并有 **2 MiB** 单文件大小上限；符号链接创建失败时（Windows 非开发者模式常见）也只逐文件拷已知条目——技能目录只放行 `SKILL.md`、`agents/**`、`references/**`、`templates/**`，`node_modules/`、`dist/`、`.git/` 与超限文件跳过。源码门禁：`grep -rn "cpSync(.*recursive" src/` 命中数 = 0。
-- **项目根不靠向上瞎找**：只在调用方传入的上下文里取（`ToolContext.directory` → `worktree`，都空则三段式报错）；不用 `process.cwd()`、不向上查找。只有独立 CLI 场景才兜底向上找，且要排除 `~/.opencode` / `~/.config/opencode`、校验项目形态（含 `.opencode/skills` 或项目配置）并写明实际用的是哪个根。
+- **项目根不靠向上瞎找**：插件只在调用方传入的上下文里取（`ToolContext.directory` → `worktree`，都空则三段式报错）；独立 CLI（bin `skill-zh`）只把 `process.cwd()` 当 `directory`，**同样不向上查找**；cwd 位于 `~/.opencode` / `~/.config/opencode`（含子树）时警告到 stderr 但继续执行。（原「独立 CLI 向上查找、校验项目形态」口径已废弃。）
 - **被测技能本体不泄漏**：本体、其祖先目录、`skills` 根自身、指向 `skills` 的别名都不会被镜像进来（按真实路径判定，绕不过去）。
 
 > 方案 C 的取舍：分数最接近真实使用，但与项目强耦合（换个项目分数会变，跨项目不可比）；输出里会注明本次镜像了多少条目。
@@ -293,6 +303,8 @@ skill_zh —— 中文 OpenCode 技能创建工具（CLI 风格单工具）
 > 该屏蔽只在本次评测的临时隔离根里生效，评测结束随隔离根一起删除。deny 配置**不读写用户其它技能目录与全局配置**；评测报告默认写 `<技能目录>/.evals`（可用 `--log-dir` 改到别处），这是本命令唯一的持久化写入点。
 
 ## skill_zh optimize
+
+> shell 等价：`skill-zh optimize <技能目录> [--iterations N] [--runs N] [--workers N] …`
 
 按评测失败迭代改写 description：先按位置切分训练/测试集（**6:4**），每轮用训练集失败模式改写描述、再用测试集评估，输出每轮通过率与最终 description。
 
@@ -350,6 +362,8 @@ skill_zh —— 中文 OpenCode 技能创建工具（CLI 风格单工具）
 ```
 
 ## skill_zh package
+
+> shell 等价：`skill-zh package <技能目录> --out <产物路径>`
 
 把技能目录按**白名单**导出成可分发目录（**不产出 npm 包**）。导出前先做与 `validate` 同源的结构检查（`SKILL.md` 结构/frontmatter、目录名与 `name` 一致，另要求 `references/` 存在）；不合规直接拒绝，**不产出半成品**。
 
@@ -414,6 +428,8 @@ skill_zh package ./skills/api-doc-writer --out ./skills-package/api-doc-writer
 ```
 
 ## skill_zh install
+
+> shell 等价：`skill-zh install [--dry-run] [--force] [--dir <目标根>]`
 
 把包内 `skill/` 装到用户级技能目录（默认 `~/.config/opencode/skills/opencode-skill-creator-zh/`），是**白名单拷贝、元数据外置、冲突探测、用户改动保护**的唯一入口（约束见 SPEC `R6.1` 的 I1–I5）。
 

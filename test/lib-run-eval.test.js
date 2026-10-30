@@ -30,7 +30,6 @@ import { test } from "node:test";
 
 import {
   createV2SkillEnumerator,
-  findProjectRoot,
   findSkillConflicts,
   findSkillConflictsInList,
   symlinkProjectOpenCodeConfig,
@@ -102,86 +101,6 @@ const withStderrCapture = (body) => {
     console.error = originalError;
   }
 };
-
-// ---------------------------------------------------------------------------
-// findProjectRoot：仅独立 CLI 兜底；跳过运行时目录、校验项目形态
-// ---------------------------------------------------------------------------
-
-test("findProjectRoot 命中祖先目录的 .opencode/skills 时返回该目录", () => {
-  const root = mkdtempSync(join(tmpdir(), "skill-eval-rootprobe-"));
-  try {
-    mkdirSync(join(root, ".opencode", "skills"), { recursive: true });
-    mkdirSync(join(root, "nested", "deeper"), { recursive: true });
-
-    assert.equal(findProjectRoot(join(root, "nested", "deeper")), root);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
-
-test("findProjectRoot 不采纳只有 .claude/skills 的目录（与 SPEC J2 对齐）", () => {
-  const root = mkdtempSync(join(tmpdir(), "skill-eval-claudeprobe-"));
-  try {
-    mkdirSync(join(root, ".claude", "skills"), { recursive: true });
-    const start = join(root, "nested");
-    mkdirSync(start, { recursive: true });
-
-    assert.equal(findProjectRoot(start), start);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
-
-test("findProjectRoot 采纳带项目配置文档的祖先目录", () => {
-  const root = mkdtempSync(join(tmpdir(), "skill-eval-configprobe-"));
-  try {
-    writeFileSync(join(root, "opencode.json"), "{}\n");
-    mkdirSync(join(root, "nested"), { recursive: true });
-
-    assert.equal(findProjectRoot(join(root, "nested")), root);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
-
-test("findProjectRoot 不采纳只有 .opencode/ 而无 skills/配置的目录", () => {
-  const root = mkdtempSync(join(tmpdir(), "skill-eval-shapeless-"));
-  try {
-    mkdirSync(join(root, ".opencode"), { recursive: true });
-    const start = join(root, "nested");
-    mkdirSync(start, { recursive: true });
-
-    assert.equal(findProjectRoot(start), start);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
-
-test("findProjectRoot 不返回 home（~/.opencode 是运行时目录），回退起点", () => {
-  const fakeHome = mkdtempSync(join(tmpdir(), "skill-eval-home-"));
-  const workdir = join(fakeHome, "work");
-  try {
-    // home 自身带 .opencode/skills（运行时目录）也会被 arguably 判成项目形态 ——
-    // 必须靠「home 不算项目根」这条排除掉，否则从 home 子目录调用会返回 home。
-    mkdirSync(join(fakeHome, ".opencode", "skills"), { recursive: true });
-    mkdirSync(workdir, { recursive: true });
-
-    assert.equal(findProjectRoot(workdir, fakeHome), workdir);
-  } finally {
-    rmSync(fakeHome, { recursive: true, force: true });
-  }
-});
-
-test("findProjectRoot 在绝对临时路径上不命中时回退传入的起点", () => {
-  const root = mkdtempSync(join(tmpdir(), "skill-eval-nomarker-"));
-  try {
-    const start = join(root, "nested");
-    mkdirSync(start, { recursive: true });
-    assert.equal(findProjectRoot(start), start);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
 
 // ---------------------------------------------------------------------------
 // linkOrCopyConfigEntry：镜像单个配置条目（幂等 / 优先符号链接 / 回退拷贝）

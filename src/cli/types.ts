@@ -30,7 +30,7 @@ export interface DispatchResult {
  * 分发层拿到的项目上下文，原样来自工具调用的 `ToolContext`。
  *
  * 口径（见 docs/SPEC.md R6.2-J2）：相对路径一律按 `directory` 解析，取不到再用 `worktree`；
- * **禁止用 `process.cwd()` 推断项目根，禁止向上查找**——上游 `findProjectRoot()` 就是在这上面
+ * **禁止用 `process.cwd()` 推断项目根，禁止向上查找**——上游的 cwd 向上取根就是在这上面
  * 把 home 目录当成项目根的（`~/.opencode` 是运行时目录，不是项目根）。
  */
 export interface DispatchContext {

@@ -2,7 +2,7 @@
 
 本文是**需求与验收口径的唯一出处**。实施批次见 [ROADMAP.md](ROADMAP.md)，编码规范见 [CONVENTIONS.md](CONVENTIONS.md)，用法定稿见 [../README.md](../README.md)。
 
-> 当前状态：B0–B6 **全部完成**——骨架、单工具壳、`new` / `validate`、`eval` / `optimize`、`package` / `install`、技能正文与文案口径均已落地；CI 已补（`.github/workflows/ci.yml`）；npm 发布未做（`npm publish` 由用户手动执行）。文中行为均由测试或门禁守住，验收项见 §4。
+> 当前状态：B0–B6 **全部完成**——骨架、单工具壳、`new` / `validate`、`eval` / `optimize`、`package` / `install`、技能正文与文案口径均已落地；**独立 shell 入口 `skill-zh` 已补**（bin，复用同一套子命令、不注册工具，见 R8）；CI 已补（`.github/workflows/ci.yml`）；npm 发布未做（`npm publish` 由用户手动执行）。文中行为均由测试或门禁守住，验收项见 §4。
 
 ## 1. 目标
 
@@ -107,7 +107,7 @@
 | 编号 | 要求（可判定） | 判定方式 |
 |---|---|---|
 | J1 | **拒绝整目录递归拷贝**：降级路径只能逐文件拷贝已知条目（配置文档、被引用的相对文件、技能目录白名单 `SKILL.md`/`agents/**`/`references/**`/`templates/**`），其余跳过；单文件大小有上限常量；**禁止对任何目录调用 `cpSync(..., { recursive: true })`** | 单测：打桩 `symlinkSync` 抛 `EPERM` 后跑镜像，`evalRoot` 文件集合 ⊆ 已知条目集合，源里的 `node_modules/`、`dist/`、`.git/` 与超限大文件均未进入；**源码门禁**：`grep -n "cpSync(.*recursive"`（`src/lib/`）命中数 = 0 |
-| J2 | **项目根只来自调用方传入的上下文**，取值优先级固定：`ToolContext.directory`（会话项目目录）→ `worktree`（工作树根）→ 都没有则三段式报错（`错误：拿不到当前项目目录`）。**禁止用 `process.cwd()` 派生项目根，禁止向上查找目录**。只有「独立 CLI 场景」（无 `ToolContext`）才允许兜底向上查找，且必须**排除 opencode 自身运行时目录**（`~/.opencode`、`~/.config/opencode`，命中不算命中）、**校验项目形态**（含 `.opencode/skills` 或 `opencode.json(c)`），并**输出实际命中的根**（含来源） | 单测：`directory` 被原样透传并使用（`src/tool.ts` → `dispatch`，含 `worktree` 次选）；两者皆空时输出三段式（恰好三行）；`process.cwd` 打桩后取根不读它；独立 CLI 兜底路径：从 home 下的临时目录调用不得返回 home 目录（`~/.opencode` 判为运行时目录跳过）；只有 `.opencode/` 而无 `skills`/项目配置的候选根不被采纳；源码门禁：`src/cli/**` 与 `src/tool.ts` 内 `process.cwd()` 的真实调用数 = 0（注释里写禁止不算命中） |
+| J2 | **项目根只来自调用方传入的上下文**，取值优先级固定：`ToolContext.directory`（会话项目目录）→ `worktree`（工作树根）→ 都没有则三段式报错（`错误：拿不到当前项目目录`）。**插件与分发层禁止用 `process.cwd()` 派生项目根，禁止向上查找目录**。独立 CLI（无 `ToolContext`，即 bin 入口 `src/cli/main.ts`）**只把 `process.cwd()` 当 `directory`，不向上查找**；cwd 位于 `~/.opencode` / `~/.config/opencode`（含子树）时警告到 stderr 但继续执行 | 单测：`directory` 被原样透传并使用（`src/tool.ts` → `dispatch`，含 `worktree` 次选）；两者皆空时输出三段式（恰好三行）；`process.cwd` 打桩后取根不读它；bin：`test/cli-main.test.js` 覆盖 cwd → `directory` 与配置目录警告；源码门禁：`src/cli/**` 与 `src/tool.ts` 内真实 `process.cwd()` 调用只允许 1 处（`src/cli/main.ts`），其余为 0（注释不算命中） |
 | J3 | **被测技能本体与其祖先永不进入 `evalRoot`**：保留 canonical（`realpath`）守卫（本体 / 祖先 / skills 根自身 / 指向 skills 的别名），判定失败按禁止处理 | 单测：被测与兄弟技能同存时按内容哈希搜不到被测技能；三种别名用例均被拒且正常兄弟技能仍被镜像 |
 | J4 | **`evalRoot` 清理必须 `finally` 级**：正常结束、抛错、取消三条路径都删除；预取消时不创建 | 单测：三路径结束后临时根不存在；`rmSync` 抛错时原始错误仍走三段式；预取消用例从未调用 `mkdtempSync` |
 | J5 | **镜像清单可打印**：`SKILL_ZH_DEBUG=1` 时列出每个被镜像条目的相对路径、类型、字节数与跳过原因；默认只输出一行汇总 | 单测：调试模式清单与磁盘实际内容一致；未开调试时输出不含逐条清单 |
@@ -123,6 +123,16 @@
 - `README.md`、`docs/`、`src/` 的用户可见文案**不引用其它技能目录**（要求 agent 去读别的技能、或把某步交给别的技能完成）；例外仅限「来源 / 许可」段落与上游移植说明。
 - 包内技能只有一份（见 R6），`npm pack --dry-run` 可验证。
 - 技能安装约束 I1–I5（见 `### R6.1`）各有单测或 `grep` 门禁，不允许只写在文档里。
+
+### R8 独立 shell 入口（bin，与 R1 不冲突）
+
+- `package.json` 提供 `"bin": { "skill-zh": "./dist/cli/main.js" }`；入口首行是 `#!/usr/bin/env node`。
+- 入口只做三件事：取 `process.argv.slice(2)` → 同一套 `parseArgs` → `runCommand`；**不注册任何工具**。因此 R1 的「工具注册调用点只有 1 处（`src/tool.ts`）」与入口形状不变，bin 只是 `runCommand` 的第二个消费方。
+- 成功：输出写 **stdout**、退出码 `0`；失败：输出写 **stderr**、退出码 `1`。三段式文案原样输出，不增删行；唯一替换是把工具名 `skill_zh`（按词边界）归一成终端里真实存在的 bin 名 `skill-zh`，避免「可用：skill_zh help」照抄后 command not found。空输出不写孤立换行；stdout/stderr 的 EPIPE（`| head`）静默吞掉、不喷栈。
+- `--version` 打印 `package.json` 的 `version`（不硬编码版本号）。
+- `parseArgs(input: string | readonly string[])`：字符串形态按现状分词；数组形态**按 token 直接用**（不 join 后重新分词），保证含空格路径可用（如 `skill-zh validate "./my skills/a"`）。
+- 独立 CLI 的 `directory` = `process.cwd()`，**不向上查找**；cwd 位于 `~/.config/opencode` 或 `~/.opencode`（含其子树）时向 stderr 打一条警告，但继续执行。
+- 断言：`test/cli-main.test.js` 的 6 条用例覆盖 help 流向 / 未知子命令 / `new` → `validate` 往返 / 含空格 argv / `--version` / 配置目录警告。
 
 ## 4. 验收方式
 
@@ -140,7 +150,7 @@
 | R6.1-I4 | `grep -n "重命名目录"`（`docs/`、`src/`）每条命中须在否定/引用语境（同句含 不能 / 无效 / 不要 / 不给 / 不出现 / 建议）；提示文案枚举的动作属于 5 类 |
 | R6.1-I5 | 单测：手工改 `SKILL.md` 后重装内容不变 + 提示 `skill_zh install --force`；加 `--force` 后为包内版本、状态目录存有 `SKILL.md.bak-<时间戳>`，技能目录内无备份 |
 | R6.2-J1 | 单测：打桩 `symlinkSync` 抛 `EPERM` 后跑隔离根镜像，`evalRoot` 文件集合 ⊆ 已知条目集合，`node_modules/`、`dist/`、`.git/` 与超单文件上限的大文件均未进入；源码门禁：`grep -n "cpSync(.*recursive"`（`src/lib/`）命中数 = 0 |
-| R6.2-J2 | 单测：`ToolContext.directory` 被透传到分发层并作为路径基准（`worktree` 为次选）；两者皆空时输出三段式（恰好三行）；`process.cwd` 打桩后取根过程不读它；源码门禁：`src/cli/**` 与 `src/tool.ts` 内 `process.cwd()` 真实调用数 = 0（注释提及不算），`src/tool.ts` 无「只读 args、丢弃 context」写法；独立 CLI 兜底：从 home 下的临时目录调用**不得返回 home**，只有 `.opencode/` 而无 `skills`/项目配置的候选根不被采纳 |
+| R6.2-J2 | 单测：`ToolContext.directory` 被透传到分发层并作为路径基准（`worktree` 为次选）；两者皆空时输出三段式（恰好三行）；`process.cwd` 打桩后取根过程不读它；源码门禁：`src/cli/**` 与 `src/tool.ts` 内真实 `process.cwd()` 调用白名单仅 `src/cli/main.ts`（恰好 1 处），其余为 0（注释提及不算），`src/tool.ts` 无「只读 args、丢弃 context」写法；独立 CLI：cwd 原样作 `directory`、不向上查找，cwd 在配置目录时警告且仍执行（`test/cli-main.test.js`） |
 | R6.2-J3 | 单测：被测技能与兄弟技能同存时，`evalRoot` 内按内容哈希搜不到被测技能；skills 根别名 / 祖先别名 / `.opencode/` 指向 skills 的条目三种用例均被拒，正常兄弟技能仍被镜像 |
 | R6.2-J4 | 单测：成功 / 抛错 / 取消三条路径结束后隔离根均不存在；预取消用例从未调用 `mkdtempSync` |
 | R6.2-J5 | 单测：`SKILL_ZH_DEBUG=1` 时镜像清单（条目 + 类型 + 字节数 + 跳过原因）与磁盘实际内容一致；未开调试时输出不含逐条清单、只输出一行汇总 |
@@ -153,6 +163,7 @@
 | B5-install | `skill_zh install --dry-run` 不写盘；真实安装后目标技能目录 = 包内白名单集合；重复安装幂等；启动钩子在测试环境不写盘（`NODE_TEST_CONTEXT` / `SKILL_ZH_NO_STARTUP_INSTALL=1`） |
 | B4-optimize | `skill_zh optimize <技能目录>` 输出每轮训练/测试通过率与最终 description，并在 `<技能目录>/.evals/` 落盘 HTML 实时报告与 JSON 结果；`--iterations` 缺值/非法走三段式 |
 | R7 | `npm run typecheck` 退出码 0；`npm test` 退出码 0；对 `README.md`、`docs/`、`src/` 搜跨技能引用措辞无命中（来源/许可段落除外） |
+| R8 | `node dist/cli/main.js help` 退出码 0、输出在 stdout；未知子命令退出码 1、三段式在 stderr 且 stdout 为空；`new` → `validate` 往返成功；含空格目录名的 argv 不被拆开；`--version` 等于 `package.json` 版本；配置目录 cwd 警告到 stderr 仍执行。`package.json` 的 `bin` 指向 `./dist/cli/main.js`，首行为 shebang；`src/` 下工具注册调用点仍为 1 处 |
 | R7-Node | `engines.node` 与 `test` 脚本用到的 Node flag 必须兼容（当前 `>=22.3` / `--experimental-test-module-mocks`）：`grep -n "experimental-test-module-mocks" package.json` 有命中时，`engines.node` 下限不得低于该 flag 的引入版本（22.3） |
 
 ## 5. 非目标

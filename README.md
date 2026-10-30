@@ -2,7 +2,7 @@
 
 把 [antongulin/opencode-skill-creator](https://github.com/antongulin/opencode-skill-creator) 改写成**中文 + 单 CLI 工具**的 OpenCode 插件：一个工具、一个 `args` 字符串、一套中文帮助与错误文案。
 
-> 当前状态：**B0–B6 全部完成**，7 个子命令均已可用，`npm test` 可跑（287 例全绿，Node 22.3+ 与 24 均实测）；上游继承缺陷台账目前是**已修 7 条 + 待修 0 条**（见 [docs/design/上游携带缺陷台账.md](docs/design/上游携带缺陷台账.md)）；**CI 已补**（`.github/workflows/ci.yml`：push / PR 跑 typecheck + test + `npm pack --dry-run`）。**npm 发布尚未做**：由用户手动执行 `npm publish`。落地批次与实测结论见 [docs/ROADMAP.md](docs/ROADMAP.md)。
+> 当前状态：**B0–B6 全部完成**，7 个子命令均已可用，`npm test` 可跑（287 例全绿，Node 22.3+ 与 24 均实测）；**独立 shell 入口 `skill-zh`（bin）已补**，长评测可在独立终端跑、不占会话；上游继承缺陷台账目前是**已修 7 条 + 待修 0 条**（见 [docs/design/上游携带缺陷台账.md](docs/design/上游携带缺陷台账.md)）；**CI 已补**（`.github/workflows/ci.yml`：push / PR 跑 typecheck + test + `npm pack --dry-run`）。**npm 发布尚未做**：由用户手动执行 `npm publish`。落地批次与实测结论见 [docs/ROADMAP.md](docs/ROADMAP.md)。
 
 ## 是什么
 
@@ -28,6 +28,7 @@
 | 描述极简 | 工具 description ≤ **60** 字符，只讲做什么，不讲用法（用法交给 `help`） |
 | 失败可修 | 错误统一三段式：`错误：` / `改法：` / `可用：skill_zh help` |
 | 自包含 | 文案与文档不指向其它技能目录 |
+| 终端等价 | 同包提供 bin `skill-zh`，在任意 shell 里复用同一套子命令（不新增工具） |
 
 ## 安装
 
@@ -50,6 +51,17 @@ npm i -g @xiaoqiong0v0/opencode-skill-creator-zh
 ### 方式二：本地插件目录
 
 适合开发调试或离线环境：先 `npm run build` 产出 `dist/`，再让 OpenCode 从本地路径加载该插件目录，重启 OpenCode。
+
+### 独立终端：`skill-zh`（bin）
+
+全局安装后（或用 `npx @xiaoqiong0v0/opencode-skill-creator-zh`）可直接在 shell 里跑同一套子命令，长评测不占 OpenCode 会话：
+
+```sh
+cd /path/to/your/project
+skill-zh eval ./skills/api-doc-writer --runs 3 --workers 4
+```
+
+目录基准是当前 cwd（不向上查找）；成功写 stdout / 退出码 0，失败写 stderr / 退出码 1。细节见 [docs/installation.md](docs/installation.md#独立终端入口-skill-zhbin)。
 
 ### 技能装在哪
 
@@ -77,6 +89,7 @@ npm i -g @xiaoqiong0v0/opencode-skill-creator-zh
 npm run build      # prebuild 先清 dist/，再由 tsc 直出 dist/
 npm test           # node --test --experimental-test-module-mocks（要求 Node >= 22.3）
 npm run typecheck  # tsc --noEmit
+node dist/cli/main.js help  # 直接跑 bin 产物（等价于全局安装后的 skill-zh）
 ```
 
 - `dist/` 不入库（`.gitignore` 已忽略），发布产物只有 `dist/`、`skill/`、`templates/`、`README.md` 四部分（`templates/` 是 `new` 生成骨架的运行必需）。
