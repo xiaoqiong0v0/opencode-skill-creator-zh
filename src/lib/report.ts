@@ -95,11 +95,11 @@ export interface GenerateHtmlOptions {
  * 表头与每行的列都按第一次迭代的 query 列表展开；历史记录里缺某条 query 的结果时按
  * 未通过渲染（`r?.pass ?? false`），因此后加入的 query 不会改变既有列的位置。
  *
+ * `history` 缺省、为 `[]` 或 `null` 时渲染一份只有表头的空报告，不抛错。
+ *
  * @param data run_loop 输出的报告数据（`history` / 原始与最佳描述 / 各项分数）
  * @param opts 自动刷新开关与技能名
  * @returns 完整 HTML 文本
- * @throws `history` 为空数组时抛 `TypeError`（上游行为：空数据会在求最佳迭代处 reduce
- *         一个空数组，未修，见 `docs/design/上游携带缺陷台账.md`）
  */
 export function generateHtml(
   data: Record<string, unknown>,
@@ -306,17 +306,22 @@ ${refreshTag}    <title>${titlePrefix}技能描述优化</title>
 
   // 找出最值得高亮的那一行：有留出集时按 test 通过数，否则按 train 通过数；
   // reduce 的比较用 `>=`，因此并列时取靠后的那一条。
+  // `history` 缺省 / `[]` / `null` 时没有可比的行：不进入 reduce（无初值的 reduce 在空
+  // 数组上抛 `TypeError: Reduce of empty array with no initial value`），bestIter 保持
+  // undefined，最终渲染成一份只有表头、没有数据行的空报告。
   let bestIter: number | undefined;
-  if (testQueries.length > 0) {
-    bestIter = history.reduce((best, h) =>
-      (h.test_passed ?? 0) >= (best.test_passed ?? 0) ? h : best,
-    ).iteration;
-  } else {
-    bestIter = history.reduce((best, h) =>
-      (h.train_passed ?? h.passed ?? 0) >= (best.train_passed ?? best.passed ?? 0)
-        ? h
-        : best,
-    ).iteration;
+  if (history.length > 0) {
+    if (testQueries.length > 0) {
+      bestIter = history.reduce((best, h) =>
+        (h.test_passed ?? 0) >= (best.test_passed ?? 0) ? h : best,
+      ).iteration;
+    } else {
+      bestIter = history.reduce((best, h) =>
+        (h.train_passed ?? h.passed ?? 0) >= (best.train_passed ?? best.passed ?? 0)
+          ? h
+          : best,
+      ).iteration;
+    }
   }
 
   /**

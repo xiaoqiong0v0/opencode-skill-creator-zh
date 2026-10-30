@@ -260,9 +260,9 @@ description: Use for PDF files: reading, extracting.`,
   );
 });
 
-test("钉住上游缺口：大写开头键被静默忽略（修复本缺陷时须同步改此用例）", () => {
-  // 台账第 4 条：键值正则要求小写开头，`Allowed-tools:` 两个分支都不匹配，
-  // 该行被整体丢弃，既不进 frontmatter，也不进 unexpected-key 列表。
+test("大写开头的顶层键报错并给出正确写法", () => {
+  // 台账第 4 条（已修）：宽松顶层键探测会把 `Allowed-tools:` 收进来，键名不合规时
+  // 报错并提示小写写法，不再静默丢弃后报「通过」。
   withSkill(
     `name: pdf-reader
 description: Use when reading documents.
@@ -270,10 +270,25 @@ Allowed-tools: "*"`,
     (skillPath) => {
       const result = validateSkill(skillPath);
 
-      // 现状：直接判通过，且 message 里完全看不到这个键。
-      assert.deepEqual(result, { valid: true, message: "技能校验通过" });
-      assert.ok(!result.message.includes("不支持的键"));
-      assert.ok(!result.message.includes("Allowed-tools"));
+      assert.equal(result.valid, false);
+      assert.ok(result.message.includes("不合规的顶层键"));
+      assert.ok(result.message.includes("Allowed-tools"));
+      assert.ok(result.message.includes("应写作 allowed-tools"));
+    },
+  );
+});
+
+test("大小写正确的 allowed-tools 键仍然通过", () => {
+  // 与上一条配对：修复不能把合法键一起判错。
+  withSkill(
+    `name: pdf-reader
+description: Use when reading documents.
+allowed-tools: "*"`,
+    (skillPath) => {
+      assert.deepEqual(validateSkill(skillPath), {
+        valid: true,
+        message: "技能校验通过",
+      });
     },
   );
 });

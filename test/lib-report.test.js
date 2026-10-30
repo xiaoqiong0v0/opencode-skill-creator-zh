@@ -149,16 +149,24 @@ test("autoRefresh 开关决定是否插入 5 秒刷新标签", () => {
   );
 });
 
-test("钉住上游缺口：history 为空数组时在求最佳迭代处抛 TypeError", () => {
-  // 台账待补条目：`bestIter` 的 reduce 没有初值，空数据会让整个报告生成崩溃，
-  // 而不是渲染一份空报告。修复本缺陷时须同步改此用例。
+test("history 为空数组 / null / 缺省时渲染空报告而不抛错", () => {
+  // 台账第 5 条（已修）：bestIter 的 reduce 无初值，空数据原本会让整个报告生成崩溃；
+  // 现在渲染一份只有表头、没有数据行的空报告。
   for (const data of [{}, { history: [] }, { history: null }]) {
-    assert.throws(
-      () => generateHtml(data),
-      (error) =>
-        error instanceof TypeError &&
-        /Reduce of empty array with no initial value/.test(error.message),
+    const html = generateHtml(data);
+
+    assert.ok(html.includes("<title>技能描述优化</title>"));
+    assert.ok(html.includes("</html>"));
+    // 没有任何迭代 ⇒ 一行数据都没有（表头是 <thead>，不计入）。
+    assert.deepEqual(rowsOf(html), []);
+    // 概要仍按缺省值渲染，不出现 undefined。
+    assert.ok(
+      html.includes(
+        "<p><strong>迭代：</strong> 0 | <strong>训练：</strong> ? | <strong>测试：</strong> ?</p>",
+      ),
     );
+    assert.ok(html.includes("<p><strong>原始描述：</strong> 无</p>"));
+    assert.ok(!html.includes("undefined"));
   }
 });
 

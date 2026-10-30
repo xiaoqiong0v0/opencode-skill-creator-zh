@@ -104,7 +104,10 @@ export function validateSkill(skillPath: string): ValidationResult {
       }
     }
 
-    const kvMatch = line.match(/^([a-z][a-z0-9_-]*)\s*:\s*(.*)$/);
+    // 宽松顶层键探测：先收集**所有**「键: 值」形式的顶层行，键名合规性留到收集完再判。
+    // 原实现直接用小写开头正则过滤，`Allowed-tools:` 这类键两个分支都不匹配，整行被
+    // 静默丢弃，校验仍报「通过」（假通过）。这里前导空白仍归下面的嵌套键分支。
+    const kvMatch = line.match(/^([^\s:#][^:]*?)\s*:\s*(.*)$/);
     if (kvMatch) {
       currentKey = kvMatch[1];
       const value = kvMatch[2].trim();
@@ -146,7 +149,23 @@ export function validateSkill(skillPath: string): ValidationResult {
     frontmatter[currentKey] = currentValue.trim();
   }
 
-  // 先查未知键：出现非法键时优先报它，避免被后续字段校验掩盖
+  // 键名先按「合法顶层键」严格判定：宽松探测会把 `Allowed-tools:` 也收进来，这里必须
+  // 报错并给出小写写法建议，不能让它静默通过（运行时按 YAML 大小写敏感处理，拼错即失效）。
+  const malformedKeys = Object.keys(frontmatter).filter(
+    (key) => !/^[a-z][a-z0-9_-]*$/.test(key),
+  );
+  if (malformedKeys.length > 0) {
+    const hints = malformedKeys.map((key) => {
+      const lowered = key.toLowerCase();
+      return lowered === key ? key : `${key}（应写作 ${lowered}）`;
+    });
+    return {
+      valid: false,
+      message: `frontmatter 含不合规的顶层键：${hints.join("、")}。顶层键只能用小写字母、数字、连字符与下划线，且必须以小写字母开头`,
+    };
+  }
+
+  // 再查未知键：出现非法键时优先报它，避免被后续字段校验掩盖
   const unexpectedKeys = Object.keys(frontmatter).filter(
     (k) => !ALLOWED_PROPERTIES.has(k)
   );

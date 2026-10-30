@@ -28,17 +28,26 @@ export interface GoldStandard extends GoldStandardInput {
   createdAt: string;
 }
 
+/** 存储记录里必须是字符串的必填字段（`passRate` 单独判数值，`notes` 可选）。 */
+const REQUIRED_STRING_FIELDS = ["id", "createdAt", "skillName", "description"] as const;
+
 /**
  * 读取存储文件。
  *
+ * `JSON.parse` 之后必须做运行时结构校验：存储被外部改坏成 `{}` / `null` / 非数组时，
+ * 只在解析处带路径报错；否则错误会漂到 `sortStandards` 的展开处，变成与文件无关的
+ * `TypeError`，用户无从定位是哪份存储坏了。
+ *
  * @param path 存储文件路径
  * @returns 文件里的金标准数组；文件不存在时返回空数组
- * @throws JSON 结构损坏时抛出带路径的错误
+ * @throws 存储不是合法 JSON、不是数组，或某条记录缺必需字段时，抛出带存储路径的错误
  */
 function readStore(path: string): GoldStandard[] {
   if (!existsSync(path)) return [];
+
+  let parsed: unknown;
   try {
-    return JSON.parse(readFileSync(path, "utf-8")) as GoldStandard[];
+    parsed = JSON.parse(readFileSync(path, "utf-8"));
   } catch (error) {
     if (error instanceof SyntaxError) {
       throw new Error(
@@ -47,6 +56,39 @@ function readStore(path: string): GoldStandard[] {
     }
     throw error;
   }
+
+  if (!Array.isArray(parsed)) {
+    throw new Error(
+      `Failed to read gold standards store at ${path}: expected a JSON array, got ${parsed === null ? "null" : typeof parsed}`,
+    );
+  }
+
+  // 逐条校验必需字段：坏记录同样要带路径与下标，不能留到排序 / 渲染时再炸。
+  parsed.forEach((entry, index) => {
+    const record = (
+      typeof entry === "object" && entry !== null ? entry : {}
+    ) as Record<string, unknown>;
+    const hasRequiredStrings = REQUIRED_STRING_FIELDS.every(
+      (field) => typeof record[field] === "string",
+    );
+    const hasValidPassRate =
+      typeof record["passRate"] === "number" && Number.isFinite(record["passRate"]);
+    const hasValidNotes =
+      record["notes"] === undefined || typeof record["notes"] === "string";
+
+    if (
+      Array.isArray(entry) ||
+      !hasRequiredStrings ||
+      !hasValidPassRate ||
+      !hasValidNotes
+    ) {
+      throw new Error(
+        `Failed to read gold standards store at ${path}: invalid record at index ${index} (expected string id, createdAt, skillName, description and a finite numeric passRate)`,
+      );
+    }
+  });
+
+  return parsed as GoldStandard[];
 }
 
 /**

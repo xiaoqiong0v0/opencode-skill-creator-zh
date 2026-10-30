@@ -3,7 +3,8 @@
  *
  * 上游 `.tmp/old/plugin/test/` 没有该模块的测试，本文件按模块对外行为补覆盖：
  * 路径不存在/不是目录、无 `eval-*` 目录、`runs/` 嵌套布局、成对运行缺失的两类
- * 问题、`outputs/` 作为运行产物的兜底，以及 `foundConfigs` 的去重排序。
+ * 问题、`outputs/` 作为运行产物的兜底（空目录不算）、断链链接跳过与合法目录链接，
+ * 以及 `foundConfigs` 的去重排序。
  */
 
 import assert from "node:assert/strict";
@@ -50,7 +51,7 @@ test("工作区路径不存在时返回唯一一条 issue", () => {
     assert.equal(result.valid, false);
     assert.equal(result.evalCount, 0);
     assert.deepEqual(result.issues, [
-      { evalDir: "nope", issue: "workspace path does not exist" },
+      { evalDir: "nope", issue: "工作区路径不存在" },
     ]);
     assert.deepEqual(result.foundConfigs, []);
     assert.equal(result.searchRoot, missing);
@@ -67,7 +68,7 @@ test("工作区路径是文件时返回「不是目录」issue", () => {
     assert.equal(result.valid, false);
     assert.equal(result.evalCount, 0);
     assert.deepEqual(result.issues, [
-      { evalDir: "plain.txt", issue: "workspace path is not a directory" },
+      { evalDir: "plain.txt", issue: "工作区路径不是目录" },
     ]);
     assert.deepEqual(result.foundConfigs, []);
     assert.equal(result.searchRoot, filePath);
@@ -85,7 +86,7 @@ test("目录里没有 eval-* 时给出「缺评测目录」issue", () => {
     assert.equal(result.issues.length, 1);
     assert.equal(
       result.issues[0].issue,
-      "no eval-* directories found (expected evals with with_skill and baseline runs)",
+      "未找到 eval-* 评测目录（应为含 with_skill 与基线运行的评测目录）",
     );
     assert.equal(result.issues[0].evalDir, root.split(/[\\/]/).at(-1));
     assert.equal(result.searchRoot, root);
@@ -153,7 +154,7 @@ test("with_skill 目录存在但没有运行产物时仍算缺失", () => {
 
     assert.equal(result.valid, false);
     assert.deepEqual(result.issues, [
-      { evalDir: "eval-a", issue: "missing with_skill run outputs" },
+      { evalDir: "eval-a", issue: "缺少 with_skill 的运行产物" },
     ]);
     // 目录本身存在过，因此仍然计入 foundConfigs。
     assert.deepEqual(result.foundConfigs, ["with_skill", "without_skill"]);
@@ -169,20 +170,42 @@ test("基线两种目录都缺时报告 baseline issue，并与 with_skill 缺�
     assert.equal(result.valid, false);
     assert.equal(result.evalCount, 1);
     assert.deepEqual(result.issues, [
-      { evalDir: "eval-a", issue: "missing with_skill run outputs" },
+      { evalDir: "eval-a", issue: "缺少 with_skill 的运行产物" },
       {
         evalDir: "eval-a",
-        issue: "missing baseline run outputs (without_skill or old_skill)",
+        issue: "缺少基线运行产物（without_skill 或 old_skill）",
       },
     ]);
     assert.deepEqual(result.foundConfigs, []);
   });
 });
 
-test("只有 outputs 目录也算有过运行产物", () => {
-  // 钉住上游现状（台账第 2 条：空 outputs/ 也算「有运行」），修复本缺陷时须同步改此用例。
+test("空 outputs 目录不算有运行产物，缺运行的问题照常报出", () => {
+  // 台账第 2 条（已修）：outputs/ 只是产物兜底布局，空目录说明没跑出任何东西。
   withWorkspace((root) => {
     makeDirs(root, ["eval-a/with_skill/outputs", "eval-a/without_skill/outputs"]);
+
+    const result = validateComparisonWorkspace(root);
+
+    assert.equal(result.valid, false);
+    assert.deepEqual(result.issues, [
+      { evalDir: "eval-a", issue: "缺少 with_skill 的运行产物" },
+      {
+        evalDir: "eval-a",
+        issue: "缺少基线运行产物（without_skill 或 old_skill）",
+      },
+    ]);
+    // 目录本身存在过，因此仍然计入 foundConfigs。
+    assert.deepEqual(result.foundConfigs, ["with_skill", "without_skill"]);
+  });
+});
+
+test("outputs 目录里有产物时算有运行产物", () => {
+  // 同一条缺陷的另一半：只要 outputs/ 至少有一个条目就继续放行。
+  withWorkspace((root) => {
+    makeDirs(root, ["eval-a/with_skill/outputs", "eval-a/without_skill/outputs"]);
+    writeFileSync(join(root, "eval-a/with_skill/outputs/result.md"), "ok");
+    writeFileSync(join(root, "eval-a/without_skill/outputs/result.md"), "ok");
 
     const result = validateComparisonWorkspace(root);
 
@@ -205,16 +228,16 @@ test("多个评测目录的问题按目录逐个累积并带各自目录名", ()
     assert.deepEqual(result.issues, [
       {
         evalDir: "eval-a",
-        issue: "missing baseline run outputs (without_skill or old_skill)",
+        issue: "缺少基线运行产物（without_skill 或 old_skill）",
       },
-      { evalDir: "eval-b", issue: "missing with_skill run outputs" },
+      { evalDir: "eval-b", issue: "缺少 with_skill 的运行产物" },
     ]);
   });
 });
 
-test("钉住上游缺口：断链符号链接让 statSync 抛 ENOENT（修复本缺陷时须同步改此用例）", (t) => {
-  // 台账第 1 条：sortedDirs 的 statSync 会跟随链接，目标不存在时直接抛错，
-  // 而不是把「无法解析的目录项」作为一条 issue 返回。
+test("断链符号链接被跳过并作为一条 issue 返回，不再让整个守卫抛错", (t) => {
+  // 台账第 1 条（已修）：sortedDirs 改用 lstat 判定目录项，断链链接跳过并记一条问题，
+  // 守卫仍按契约返回 { valid:false, issues:[...] }，不再抛 ENOENT。
   withWorkspace((root) => {
     const linkPath = join(root, "eval-broken");
     const missingTarget = join(root, "does-not-exist");
@@ -237,10 +260,64 @@ test("钉住上游缺口：断链符号链接让 statSync 抛 ENOENT（修复本
       return;
     }
 
-    // 现状：整个调用抛出 ENOENT，`valid`/`issues` 契约失效。
-    assert.throws(
-      () => validateComparisonWorkspace(root),
-      (error) => error instanceof Error && error.code === "ENOENT",
+    const result = validateComparisonWorkspace(root);
+
+    assert.equal(result.valid, false);
+    assert.equal(result.evalCount, 0);
+    // 跳过项单独成一条 issue：带目录项名与中文原因（不可解析 / 已跳过）。
+    const skipped = result.issues.filter((issue) => issue.evalDir === "eval-broken");
+    assert.equal(skipped.length, 1);
+    assert.match(skipped[0].issue, /不可解析/);
+    assert.match(skipped[0].issue, /已跳过/);
+    // 跳过之后没有可用评测目录，原有「缺评测目录」的问题仍按规则报出。
+    assert.deepEqual(
+      result.issues.map((issue) => issue.issue),
+      [
+        skipped[0].issue,
+        "未找到 eval-* 评测目录（应为含 with_skill 与基线运行的评测目录）",
+      ],
     );
+  });
+});
+
+test("指向目录的合法符号链接仍算作 eval / run 目录", (t) => {
+  // 缺陷 1 的修复不能顺手把「指向目录的合法链接」判成非目录（那是新的回归）：
+  // eval 目录本身、以及 eval 下的 with_skill 配置目录都允许是指向真实目录的链接。
+  withWorkspace((root) => {
+    makeDirs(root, [
+      "real-eval/with_skill/run-1",
+      "real-eval/without_skill/run-1",
+      "eval-b/without_skill/run-1",
+    ]);
+
+    // 目录链接在部分 Windows 上需要权限：junction 通常免权限，退回 dir 类型。
+    let lastError;
+    const created = [
+      [join(root, "real-eval"), join(root, "eval-link")],
+      [join(root, "real-eval", "with_skill"), join(root, "eval-b", "with_skill")],
+    ].map(([target, link]) => {
+      for (const type of ["junction", "dir"]) {
+        try {
+          symlinkSync(target, link, type);
+          return true;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+      return false;
+    });
+    if (!created.every(Boolean)) {
+      t.skip(`当前环境无法创建目录符号链接（${lastError?.code ?? "unknown"}）`);
+      return;
+    }
+
+    const result = validateComparisonWorkspace(root);
+
+    assert.equal(result.valid, true);
+    // 链接目录 eval-link 与真实目录 eval-b 都应被当作评测目录。
+    assert.equal(result.evalCount, 2);
+    assert.deepEqual(result.issues, []);
+    assert.deepEqual(result.foundConfigs, ["with_skill", "without_skill"]);
+    assert.equal(result.searchRoot, root);
   });
 });

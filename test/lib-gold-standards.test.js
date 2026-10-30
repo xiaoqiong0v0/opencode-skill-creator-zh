@@ -146,25 +146,40 @@ test("removeGoldStandard 按 id 删除", () => {
   });
 });
 
-test("钉住上游缺口：存储内容是对象时排序处抛 TypeError（修复本缺陷时须同步改此用例）", () => {
-  // 台账第 3 条：readStore 只做 `as GoldStandard[]` 类型断言，不做运行时校验，
-  // 于是错误发生在远离解析点的 sortStandards 展开处，且不带存储路径。
+test("存储不是数组或记录缺必需字段时抛带存储路径的结构错误", () => {
+  // 台账第 3 条（已修）：readStore 在解析处就校验结构，错误带存储路径与下标，
+  // 不再漂到 sortStandards 的展开处变成一个与文件无关的 TypeError。
   withStore((storePath) => {
     mkdirSync(dirname(storePath), { recursive: true });
-    writeFileSync(storePath, "{}");
 
-    assert.throws(
-      () => listGoldStandards(storePath),
-      (error) =>
-        error instanceof TypeError && error.message.includes("is not iterable"),
-    );
-    // 现状：报错里既没有存储路径，也没有 malformed 字样，与 SyntaxError 分支不一致。
-    assert.throws(
-      () => getGoldAdvice(storePath),
-      (error) =>
-        error instanceof TypeError &&
-        !error.message.includes(storePath) &&
-        !error.message.includes("malformed"),
-    );
+    const cases = [
+      { label: "空对象", content: "{}", expected: /expected a JSON array, got object/ },
+      { label: "null", content: "null", expected: /expected a JSON array, got null/ },
+      {
+        label: "数组里的记录缺必需字段",
+        content: JSON.stringify([{ id: "only-id" }]),
+        expected: /invalid record at index 0/,
+      },
+    ];
+    const prefix = `Failed to read gold standards store at ${storePath}:`;
+
+    for (const { label, content, expected } of cases) {
+      writeFileSync(storePath, content);
+
+      for (const call of [
+        () => listGoldStandards(storePath),
+        () => getGoldAdvice(storePath),
+      ]) {
+        assert.throws(
+          call,
+          (error) =>
+            error instanceof Error &&
+            !(error instanceof TypeError) &&
+            error.message.startsWith(prefix) &&
+            expected.test(error.message),
+          label,
+        );
+      }
+    }
   });
 });
