@@ -9,7 +9,7 @@ OpenCode 中文技能工坊 —— npm 插件，只暴露 1 个 CLI 风格工具
 | 文档 | 说明 |
 |---|---|
 | [SPEC.md](SPEC.md) | 需求与验收口径（R1–R7）：单工具、7 子命令、help 覆盖度、description 长度、错误三段式、技能入包与安装约束、工程门禁 |
-| [ROADMAP.md](ROADMAP.md) | 实施批次 B0–B6，每批写明「内容 → 涉及文件 → 验收方式」；B0–B6 全部完成，发布链路（`npm publish`）尚未执行 |
+| [ROADMAP.md](ROADMAP.md) | 实施批次 B0–B6，每批写明「内容 → 涉及文件 → 验收方式」；B0–B6 全部完成，CI 已补；npm 发布（`npm publish`）尚未执行 |
 | [CONVENTIONS.md](CONVENTIONS.md) | 项目规范：目录约定、TypeScript 编译口径、注释、类型、导入分组、命名、测试、文档规则 |
 | [tools.md](tools.md) | `skill_zh` 子命令参考：参数、输出示例、失败示例（三段式），逐个子命令一节 |
 | [ASYNC.md](ASYNC.md) | `eval` / `optimize` 的异步与并发交互点清单：共享状态 · 保护手段 · 顺序契约 · 位置，含门禁表 |

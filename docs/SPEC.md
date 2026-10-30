@@ -2,7 +2,7 @@
 
 本文是**需求与验收口径的唯一出处**。实施批次见 [ROADMAP.md](ROADMAP.md)，编码规范见 [CONVENTIONS.md](CONVENTIONS.md)，用法定稿见 [../README.md](../README.md)。
 
-> 当前状态：B0–B6 **全部完成**——骨架、单工具壳、`new` / `validate`、`eval` / `optimize`、`package` / `install`、技能正文与文案口径均已落地；发布链路未做（`npm publish` 由用户手动执行）。文中行为均由测试或门禁守住，验收项见 §4。
+> 当前状态：B0–B6 **全部完成**——骨架、单工具壳、`new` / `validate`、`eval` / `optimize`、`package` / `install`、技能正文与文案口径均已落地；CI 已补（`.github/workflows/ci.yml`）；npm 发布未做（`npm publish` 由用户手动执行）。文中行为均由测试或门禁守住，验收项见 §4。
 
 ## 1. 目标
 

@@ -2,7 +2,7 @@
 
 [项目概览](../README.md) · [子命令参考](tools.md) · [技能打包决策](design/技能打包决策.md) · [技能安装与目录问题](design/技能安装与目录问题.md)
 
-> 当前状态：B0–B6 完成（发布链路未做，`npm publish` 由用户手动执行），安装器（`src/lib/skill-install.ts`）与 `skill_zh install` 已落地；技能发现规则取自 opencode v1.18.25（跨版本需复核）。
+> 当前状态：B0–B6 完成（CI 已补；npm 发布未做，`npm publish` 由用户手动执行），安装器（`src/lib/skill-install.ts`）与 `skill_zh install` 已落地；技能发现规则取自 opencode v1.18.25（跨版本需复核）。
 
 ## 前置条件
 

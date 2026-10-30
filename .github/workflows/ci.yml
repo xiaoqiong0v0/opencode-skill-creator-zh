@@ -1,0 +1,43 @@
+# CI：push 到 main 与 PR 时跑类型检查、构建与测试（不含发布，发布由用户手动执行）
+# 依赖：package-lock.json（npm ci）、Node ≥ 22.3（--experimental-test-module-mocks）
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: typecheck + test (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22.x']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 类型检查
+        run: npm run typecheck
+
+      - name: 构建与测试
+        run: npm test
+
+      - name: 打包自检（不发布）
+        run: npm pack --dry-run

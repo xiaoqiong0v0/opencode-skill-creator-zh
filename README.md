@@ -2,7 +2,7 @@
 
 把 [antongulin/opencode-skill-creator](https://github.com/antongulin/opencode-skill-creator) 改写成**中文 + 单 CLI 工具**的 OpenCode 插件：一个工具、一个 `args` 字符串、一套中文帮助与错误文案。
 
-> 当前状态：**B0–B6 全部完成**，7 个子命令均已可用，`npm test` 可跑（275 例全绿）。**发布链路尚未做**：发到 npm 由用户手动执行 `npm publish`，包尚未发布。落地批次与实测结论见 [docs/ROADMAP.md](docs/ROADMAP.md)。
+> 当前状态：**B0–B6 全部完成**，7 个子命令均已可用，`npm test` 可跑（275 例全绿）；**CI 已补**（`.github/workflows/ci.yml`：push / PR 跑 typecheck + test + `npm pack --dry-run`）。**npm 发布尚未做**：由用户手动执行 `npm publish`。落地批次与实测结论见 [docs/ROADMAP.md](docs/ROADMAP.md)。
 
 ## 是什么
 

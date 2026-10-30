@@ -6,7 +6,7 @@
 
 `.tmp/old/` **不是上游原文**，而是含 2 个 fork 提交的中间态（`69bcb56` 汉化技能、`221bb4e` 中文 CLI 骨架）：`plugin/package.json` 已改名、`plugin/skill/` 已汉化、`plugin/single-tool.ts` 已有 CLI 原型；**只有 `plugin/lib/**` 与基线 `d4383924` 一致**。B2/B3 迁 `lib/` 时一律以 `d4383924` 为基线，其余文件只当 fork 中间态参考，不得当作上游原文引用。
 
-状态：**B0–B6 全部完成**（B3/B4/B5/B6 于 2026-10-29 落地并实测，见各批「实测结论」）。**发布链路尚未做**：`npm publish` 由用户手动执行，包尚未上线。
+状态：**B0–B6 全部完成**（B3/B4/B5/B6 于 2026-10-29 落地并实测，见各批「实测结论」）。**CI 已补**（`.github/workflows/ci.yml`：push / PR 跑 typecheck + test + `npm pack --dry-run`）；**npm 发布尚未做**：`npm publish` 由用户手动执行，包尚未上线。
 
 ---
 
