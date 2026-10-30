@@ -300,3 +300,27 @@ test("反向祖先：--out 是技能目录的祖先时被拒绝", () => {
     assert.ok(!existsSync(join(root, "skills", "SKILL.md")));
   });
 });
+
+test("大写 frontmatter 键的源技能被拒绝导出，且不产出半成品", () => {
+  withTempRoot((root) => {
+    // 除 Allowed-tools 外全部合规（name 与目录一致、有 references/），确保拒绝只来自该键。
+    writeFile(
+      root,
+      "skills/bad-key-skill/SKILL.md",
+      ["---", "name: bad-key-skill", 'Allowed-tools: "Read"', "description: 导出测试技能", "---", "", "# 测试技能", ""].join("\n"),
+    );
+    writeFile(root, "skills/bad-key-skill/references/ref.md", "reference\n");
+    const skillDir = join(root, "skills", "bad-key-skill");
+    const outDir = join(root, "pkg", "bad-key-skill");
+
+    const result = runCommand(parseArgs(`package "${toDisplay(skillDir)}" --out "${toDisplay(outDir)}"`), ctxOf(root));
+
+    assert.equal(result.ok, false, result.output);
+    assert.match(result.output.split("\n")[0], /^错误：导出前校验未通过（1 处错误）$/);
+    // 逐条格式：点出键名、行号与小写建议（同源门禁走的是 validate 的扫描，不是笼统兜底文案）。
+    assert.ok(result.output.includes("frontmatter 第 3 行的顶层键「Allowed-tools」不合规"), result.output);
+    assert.ok(result.output.includes("应写作 allowed-tools"), result.output);
+    // 导出失败不产半成品：目标目录本身都不应被创建。
+    assert.ok(!existsSync(outDir), `导出失败仍写出了目标目录：${outDir}`);
+  });
+});

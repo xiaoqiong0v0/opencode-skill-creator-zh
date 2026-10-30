@@ -4,6 +4,7 @@
  * 结构规则以 `lib/validate.ts` 的 `validateSkill` 为准（同一套口径，不在这里另立标准），但
  * `validateSkill` 只回**第一条**问题；本文件按同样的规则逐条扫描 frontmatter，把**全部**问题
  * 一次列出来（错误与提示分开计数），并补一条 `validateSkill` 不覆盖的检查：目录名 = `name`。
+ * `validateSkill` 的结论仍会并入（它以后新增的规则不会被漏掉），但同一类别的问题只报一次。
  */
 
 import { existsSync, readFileSync, statSync } from "node:fs";
@@ -44,8 +45,39 @@ const COMPATIBILITY_MAX_LENGTH = 500;
 /** 允许出现在 frontmatter 的键（与 `lib/validate.ts` 的 `ALLOWED_PROPERTIES` 同源）。 */
 const ALLOWED_PROPERTIES = ["name", "description", "license", "allowed-tools", "metadata", "compatibility"];
 
+/** 合规顶层键：小写字母开头，只用小写字母、数字、连字符与下划线（与 `lib/validate.ts` 一致）。 */
+const KEY_PATTERN = /^[a-z][a-z0-9_-]*$/;
+
+/**
+ * 宽松的顶层键探测：无前导空白且不是注释的「键: 值」行都先收进来，键名合规性随后再判。
+ *
+ * 不能用小写开头正则直接过滤——`Allowed-tools:` 这类键匹配失败后整行被丢弃，既不报错也不
+ * 参与字段校验，结果仍是「通过」（假通过）。前导空白的嵌套行（如 `metadata` 下的键）不匹配
+ * 本正则，不会被误当顶层键。
+ */
+const TOP_LEVEL_KEY_LINE = /^([^\s:#][^:]*?)\s*:\s*(.*)$/;
+
 /** 块标量头部（`|`/`>` 及其缩进、截断指示符）。 */
 const BLOCK_SCALAR_MARKER = /^[|>](?:[1-9][+-]?|[+-][1-9]?)?$/;
+
+/**
+ * CLI 逐条扫描覆盖的问题类别。
+ *
+ * 合并 `validateSkill` 的结论时按它去重：同一类别 CLI 已逐条报过（还更细），就不再补一条
+ * 笼统的兜底文案；`validateSkill` 以后新增、CLI 没覆盖的类别则原样补进来。
+ */
+type IssueCategory =
+  | "structure"
+  | "yaml-value"
+  | "malformed-key"
+  | "unexpected-key"
+  | "missing-name"
+  | "missing-description"
+  | "name-format"
+  | "name-length"
+  | "description-angle"
+  | "description-length"
+  | "compatibility-length";
 
 /**
  * 把路径统一成 `/` 分隔，供输出与改法命令使用。
@@ -109,15 +141,43 @@ function readFrontmatterLines(content: string): string[] | null {
 }
 
 /**
+ * 把 `validateSkill` 的一句结论归到 CLI 扫描的类别上，供合并时去重。
+ *
+ * 两套解析口径相同但粒度不同：lib 只回第一条、CLI 逐条列全。若同一类问题两边都报，用户会
+ * 看到「提示 description 超长」+「错误 description 过长」这类重复。返回 `null` 表示 CLI
+ * 没有对应规则（lib 以后新增的校验），必须原样补进结果，不能因为「已报过别的」就吞掉。
+ *
+ * @param message `validateSkill` 返回的一句说明
+ * @returns 对应类别；CLI 未覆盖时为 `null`
+ */
+function classifyVerdict(message: string): IssueCategory | null {
+  if (message.includes("不合规的顶层键")) return "malformed-key";
+  if (message.includes("不支持的键")) return "unexpected-key";
+  if (message.includes("取值不是合法 YAML")) return "yaml-value";
+  if (message.includes("缺少必填字段 name")) return "missing-name";
+  if (message.includes("缺少必填字段 description")) return "missing-description";
+  if (message.includes("不是 kebab-case") || message.includes("不能以连字符开头")) return "name-format";
+  if (message.includes("name 过长")) return "name-length";
+  if (message.includes("description 不能含尖括号")) return "description-angle";
+  if (message.includes("description 过长")) return "description-length";
+  if (message.includes("compatibility 过长")) return "compatibility-length";
+  if (message.includes("未找到 SKILL.md") || message.includes("缺少 YAML frontmatter") || message.includes("frontmatter 格式不正确")) {
+    return "structure";
+  }
+  return null;
+}
+
+/**
  * 扫描 frontmatter，逐条产出问题（同一目录多处问题一次报全）。
  *
- * 规则与 `validateSkill` 一一对应，差别只在「不提前 return」：未知键、未加引号的非法取值、
- * 缺失必填字段、name/description 规范各自成为一条独立问题。
+ * 规则与 `validateSkill` 一一对应，差别只在「不提前 return」：未知键、不合规键名、未加引号
+ * 的非法取值、缺失必填字段、name/description 规范各自成为一条独立问题。
  *
  * @param fmLines frontmatter 行（不含两行 `---`）
  * @param skillFile SKILL.md 的显示路径
  * @param dirName 技能目录名（用于给出可直接照抄的 `name` 改法）
  * @param meta `parseSkillMd` 解析出的 name / description；解析失败时为 `null`
+ * @param covered 已报出的问题类别，边扫描边写入（供合并 `validateSkill` 结论时去重）
  * @returns 问题列表（可能为空）
  */
 function scanFrontmatter(
@@ -125,6 +185,7 @@ function scanFrontmatter(
   skillFile: string,
   dirName: string,
   meta: { name: string; description: string } | null,
+  covered: Set<IssueCategory>,
 ): Issue[] {
   const issues: Issue[] = [];
   const keyLines = new Map<string, number>();
@@ -132,7 +193,7 @@ function scanFrontmatter(
   const unexpected: string[] = [];
 
   fmLines.forEach((line, index) => {
-    const kv = /^([a-z][a-z0-9_-]*)\s*:\s*(.*)$/.exec(line);
+    const kv = TOP_LEVEL_KEY_LINE.exec(line);
     if (kv === null) return;
 
     const [, key, rawValue] = kv;
@@ -140,12 +201,28 @@ function scanFrontmatter(
     // +2：frontmatter 从文件第 2 行开始（第 1 行是 `---`），数组下标还要再 +1。
     const lineNo = index + 2;
 
-    if (!keyLines.has(key)) keyLines.set(key, lineNo);
-    if (!ALLOWED_PROPERTIES.includes(key)) unexpected.push(key);
-    if (!values.has(key)) values.set(key, BLOCK_SCALAR_MARKER.test(value) ? "" : value.replace(/^['"]|['"]$/g, ""));
+    const isKeyValid = KEY_PATTERN.test(key);
+    if (!isKeyValid) {
+      const lowered = key.toLowerCase();
+      const renameFix =
+        lowered === key
+          ? `把第 ${lineNo} 行的键名「${key}」改成以小写字母开头、且只用小写字母、数字、连字符与下划线的形式`
+          : `把第 ${lineNo} 行的键名「${key}」改成小写形式：应写作 ${lowered}`;
+      covered.add("malformed-key");
+      issues.push({
+        severity: "error",
+        problem: `frontmatter 第 ${lineNo} 行的顶层键「${key}」不合规：顶层键只能以小写字母开头，且只用小写字母、数字、连字符与下划线（运行时按大小写敏感解析，拼错即失效）`,
+        fix: ALLOWED_PROPERTIES.includes(lowered)
+          ? renameFix
+          : `${renameFix}；「${lowered}」也不在允许的键内，删除该行或改用允许的键：${ALLOWED_PROPERTIES.join("、")}`,
+        file: skillFile,
+        line: lineNo,
+      });
+    }
 
     // 与 `validateSkill` 同一条判据：未加引号且含「: 」或以冒号结尾的取值不是合法 YAML。
     if (value !== "" && !isQuotedValue(value) && !BLOCK_SCALAR_MARKER.test(value) && (/:[ \t]/.test(value) || value.endsWith(":"))) {
+      covered.add("yaml-value");
       issues.push({
         severity: "error",
         problem: `frontmatter 的 ${key} 取值不是合法 YAML（含「: 」或以冒号结尾），运行时会丢弃该技能`,
@@ -154,9 +231,18 @@ function scanFrontmatter(
         line: lineNo,
       });
     }
+
+    // 不合规键只报键名问题，不再参与后续字段解析：否则既会重复报「不支持的键」，
+    // 也会让大小写写错的 name/description 冒充合法字段。
+    if (!isKeyValid) return;
+
+    if (!keyLines.has(key)) keyLines.set(key, lineNo);
+    if (!ALLOWED_PROPERTIES.includes(key)) unexpected.push(key);
+    if (!values.has(key)) values.set(key, BLOCK_SCALAR_MARKER.test(value) ? "" : value.replace(/^['"]|['"]$/g, ""));
   });
 
   if (unexpected.length > 0) {
+    covered.add("unexpected-key");
     issues.push({
       severity: "error",
       problem: `frontmatter 含不支持的键：${unexpected.sort().join("、")}`,
@@ -171,6 +257,7 @@ function scanFrontmatter(
   const descriptionLine = keyLines.get("description");
 
   if (name === "") {
+    covered.add("missing-name");
     issues.push({
       severity: "error",
       problem: "frontmatter 缺少必填字段 name",
@@ -178,6 +265,7 @@ function scanFrontmatter(
       file: skillFile,
     });
   } else if (!KEBAB_PATTERN.test(name)) {
+    covered.add("name-format");
     issues.push({
       severity: "hint",
       problem: `name「${name}」不是 kebab-case（只允许小写字母、数字与单个连字符）`,
@@ -186,6 +274,7 @@ function scanFrontmatter(
       ...(nameLine === undefined ? {} : { line: nameLine }),
     });
   } else if (name.length > NAME_MAX_LENGTH) {
+    covered.add("name-length");
     issues.push({
       severity: "hint",
       problem: `name 过长：${name.length} 字符，上限 ${NAME_MAX_LENGTH} 字符`,
@@ -196,6 +285,7 @@ function scanFrontmatter(
   }
 
   if (description === "") {
+    covered.add("missing-description");
     issues.push({
       severity: "error",
       problem: "frontmatter 缺少必填字段 description",
@@ -203,6 +293,7 @@ function scanFrontmatter(
       file: skillFile,
     });
   } else if (/[<>]/.test(description)) {
+    covered.add("description-angle");
     issues.push({
       severity: "error",
       problem: "description 含尖括号（< 或 >），会被加载器丢弃",
@@ -211,6 +302,7 @@ function scanFrontmatter(
       ...(descriptionLine === undefined ? {} : { line: descriptionLine }),
     });
   } else if (countChars(description) > DESCRIPTION_MAX_LENGTH) {
+    covered.add("description-length");
     issues.push({
       severity: "hint",
       problem: `description 超长：${countChars(description)} 字符，上限 ${DESCRIPTION_MAX_LENGTH} 字符`,
@@ -222,6 +314,7 @@ function scanFrontmatter(
 
   const compatibility = (values.get("compatibility") ?? "").trim();
   if (countChars(compatibility) > COMPATIBILITY_MAX_LENGTH) {
+    covered.add("compatibility-length");
     issues.push({
       severity: "error",
       problem: `compatibility 过长：${countChars(compatibility)} 字符，上限 ${COMPATIBILITY_MAX_LENGTH} 字符`,
@@ -237,7 +330,7 @@ function scanFrontmatter(
 /**
  * 收集全部问题：frontmatter 逐条扫描 + 目录名与 `name` 的一致性。
  *
- * `validateSkill` 只用来兜底（它加了扫描没覆盖的新规则时，至少不会漏判「通过」）。
+ * `validateSkill` 的结论始终并入（它加了扫描没覆盖的新规则时不会漏判），已覆盖的类别跳过。
  *
  * @param skillPath 技能目录绝对路径
  * @param displayPath 技能目录显示路径
@@ -293,7 +386,8 @@ export function collectIssues(skillPath: string, displayPath: string): Issue[] {
     // frontmatter 已由上面确认成形；这里失败只说明解析器更严格，退回按原始键值判定。
   }
 
-  const issues = scanFrontmatter(fmLines, skillFile, dirName, meta);
+  const covered = new Set<IssueCategory>();
+  const issues = scanFrontmatter(fmLines, skillFile, dirName, meta, covered);
 
   const name = (meta?.name ?? "").trim();
   if (name !== "" && name !== dirName) {
@@ -305,15 +399,19 @@ export function collectIssues(skillPath: string, displayPath: string): Issue[] {
     });
   }
 
-  // 兜底：扫描没覆盖的规则（例如新增字段校验）仍以 `validateSkill` 的结论为准。
+  // 合并而非二选一：`validateSkill` 以后新增的规则（CLI 扫描没覆盖）仍要并入，不能因为
+  // `issues` 非空就整条丢弃；CLI 已逐条报过的类别（更细、带行号）则跳过，避免重复。
   const verdict = validateSkill(skillPath);
-  if (!verdict.valid && issues.length === 0) {
-    issues.push({
-      severity: "error",
-      problem: `校验未通过：${verdict.message}`,
-      fix: `按提示修改 ${skillFile}，再运行 skill_zh validate 复核`,
-      file: skillFile,
-    });
+  if (!verdict.valid) {
+    const category = classifyVerdict(verdict.message);
+    if (category === null || !covered.has(category)) {
+      issues.push({
+        severity: "error",
+        problem: `校验未通过：${verdict.message}`,
+        fix: `按提示修改 ${skillFile}，再运行 skill_zh validate 复核`,
+        file: skillFile,
+      });
+    }
   }
 
   return issues;
