@@ -24,6 +24,9 @@
     "chinese"
   ],
   "license": "Apache-2.0",
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
     "node": ">= 22.3"
   },
