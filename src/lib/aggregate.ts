@@ -712,19 +712,25 @@ export function summarizeEvalResults(rows: readonly EvalSummaryRow[]): EvalSumma
 /**
  * 把评测汇总渲染成中文文本行（`eval` 输出用）。
  *
+ * 两种数字必须分清口径：**总通过率 / 分组通过率是成绩**（`pass` 判定，参与结论）；
+ * **触发率是诊断量**（按极性分别统计「实际被触发」的比例，负面组也计入——负面组数值越低越好，
+ * 1.00 表示全被触发），它单独出现时很容易被读成「只过了一半」，所以每处都带「诊断用，非通过率」。
+ *
  * @param summary `summarizeEvalResults` 的产物
  * @returns 以「汇总：」开头的文本行
  */
 export function formatEvalSummary(summary: EvalSummary): string[] {
   const rate = (value: number): string => value.toFixed(2);
   const stats = (value: Stats): string => `${rate(value.mean)} ± ${rate(value.stddev)}`;
+  // 触发率的口径说明只写一份，主行与分组行共用，避免两处措辞漂移。
+  const triggerNote = (value: Stats): string => `原始触发率 ${stats(value)}（诊断用，非通过率）`;
   const lines = [
     "汇总：",
-    `  总通过率 ${rate(summary.pass_rate)}（${summary.passed}/${summary.total}），失败 ${summary.failed} 条；触发率均值 ${stats(summary.trigger_rate)}`,
+    `  总通过率 ${rate(summary.pass_rate)}（${summary.passed}/${summary.total}），失败 ${summary.failed} 条；${triggerNote(summary.trigger_rate)}`,
   ];
   for (const group of summary.groups) {
     lines.push(
-      `  ${group.label}：${group.total} 条，通过 ${group.passed}（${rate(group.pass_rate)}），失败 ${group.failed}；触发率均值 ${stats(group.trigger_rate)}`,
+      `  ${group.label}：${group.total} 条，通过 ${group.passed}（${rate(group.pass_rate)}），失败 ${group.failed}；${triggerNote(group.trigger_rate)}`,
     );
   }
   if (summary.duplicates.length > 0) {

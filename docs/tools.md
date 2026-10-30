@@ -88,15 +88,19 @@ skill_zh —— 中文 OpenCode 技能创建工具（CLI 风格单工具）
 
 > shell 等价：`skill-zh new <技能名> --dir <目录> [--force]`
 
-按中文模板（仓库 `templates/`）生成技能骨架：`<技能名>/SKILL.md` + `<技能名>/references/`。
+按中文模板（仓库 `templates/`）生成技能骨架：`<技能名>/SKILL.md` + `<技能名>/references/` + `<技能名>/eval_set.json`。
 
 | 参数 | 必填 | 默认 | 说明 |
 |---|---|---|---|
 | `<技能名>` | 是 | — | 必须匹配 `^[a-z0-9]+(-[a-z0-9]+)*$` 且 ≤ 64 字符；同时作为目录名与 frontmatter `name` |
 | `--dir <目录>` | 否 | 当前会话项目目录 | 父目录，不存在则创建；相对路径按「路径解析基准」一节解析 |
-| `--force` | 否 | 关 | 目标目录已存在且非空时允许覆盖：只重写 `SKILL.md` 与 `references/示例.md`，被覆盖的两个文件各留一份 `.bak`（输出点名「已备份：…」），不动用户自建文件 |
+| `--force` | 否 | 关 | 目标目录已存在且非空时允许覆盖：重写 `SKILL.md` 与 `references/示例.md`（各留一份 `.bak`，输出点名「已备份：…」），不动用户自建文件；**已存在的 `eval_set.json` 一律保留**（评测集是用户资产，不覆盖、不备份） |
 
-目标目录已存在且**非空**时默认拒绝（空目录可直接生成）。生成的 `description` 是带引号的 TODO 占位（`TODO: 用一句话写清做什么 + 何时触发 + 不适用，≤ 60 字符`），`references/示例.md` 开头写明「何时读本文件」。
+目标目录已存在且**非空**时默认拒绝（空目录可直接生成）。生成的三样东西：
+
+- `SKILL.md`：`description` 是带引号的 TODO 占位（`TODO: 用一句话写清做什么 + 何时触发 + 不适用，≤ 60 字符`）——`validate` 会提示、`--strict` 判失败，改完才算完成；
+- `references/示例.md`：开头写明「何时读本文件」；
+- `eval_set.json`：**可直接跑**的最小评测集（2 条应触发 + 1 条不应触发），`query` 仍是 TODO 占位，`_comment` 键写改法（`eval` 只读 `query` / `should_trigger`，多余键忽略）——不必先手写评测集就能 `eval` 一次。
 
 输出示例：
 
@@ -104,9 +108,23 @@ skill_zh —— 中文 OpenCode 技能创建工具（CLI 风格单工具）
 已生成技能骨架：./skills/api-doc-writer
   SKILL.md               （frontmatter：name、description 占位，正文为待填大纲）
   references/示例.md      （按需加载的参考资料，文件开头写明何时读）
+  eval_set.json          （2 正 1 负的可跑评测集骨架，query 仍是 TODO 占位）
 下一步：
   1. 编辑 ./skills/api-doc-writer/SKILL.md，把 description 的 TODO 换成「做什么 + 何时触发 + 不适用」
-  2. 运行 skill_zh validate ./skills/api-doc-writer 复核结构
+  2. 编辑 ./skills/api-doc-writer/eval_set.json，把 3 条 query 换成针对本技能的真实说法
+  3. 运行 skill_zh validate ./skills/api-doc-writer --strict 复核结构（占位未改完会判失败）
+  4. 运行 skill_zh eval ./skills/api-doc-writer --runs 1 试跑评测（调用 opencode，会产生费用）
+```
+
+`--force` 时已存在评测集的输出（结构检查与备份行为同上，评测集原样保留）：
+
+```text
+已生成技能骨架：./skills/api-doc-writer
+  SKILL.md               （frontmatter：name、description 占位，正文为待填大纲）
+  references/示例.md      （按需加载的参考资料，文件开头写明何时读）
+  eval_set.json          （已存在，保留原评测集未覆盖）
+  已备份：./skills/api-doc-writer/SKILL.md.bak
+  已保留：./skills/api-doc-writer/eval_set.json（未覆盖已有评测集）
 ```
 
 失败示例（目标已存在）：
@@ -129,14 +147,16 @@ skill_zh —— 中文 OpenCode 技能创建工具（CLI 风格单工具）
 
 > shell 等价：`skill-zh validate <技能目录> [--strict]`
 
-校验技能目录：`SKILL.md` 是否存在、frontmatter 是否合法、必填字段是否齐全、目录名与 `name` 是否一致、description 长度是否在限内。
+校验技能目录：`SKILL.md` 是否存在、frontmatter 是否合法、必填字段是否齐全、目录名与 `name` 是否一致、description 长度是否在限内、description 是否仍是模板占位。
 
 | 参数 | 必填 | 说明 |
 |---|---|---|
 | `<技能目录>` | 是 | 含 `SKILL.md` 的目录 |
-| `--strict` | 否 | 把 description 长度与命名规范从「提示」升级为「错误」（判失败）；缺省只提示、不影响「通过」结论 |
+| `--strict` | 否 | 把全部「提示」升级为「错误」（判失败）：description 长度、命名规范、description 仍是占位文案；缺省只提示、不影响「通过」结论 |
 
 每条问题都给 `问题：` + `文件:行`（能定位时）+ `改法：`，改法可直接照做；**同一目录的多处问题一次报全**（不是只报第一条），错误与提示分开计数、一并输出（不必先修完错误再跑一次才看见提示）。结论有两种：`通过` / `未通过（N 处错误[, M 处提示]）`；通过时同时输出 description 实际字符数。
+
+**占位文案判据**（只查 `description`，不查正文，且**只认占位形态**）：① description **开头**就是 `TODO` / `待填` 加冒号（半角 `:` 或全角 `：`，大小写不敏感）；② description **整体等于**模板占位原文 `TODO: 用一句话写清做什么 + 何时触发 + 不适用，≤ 60 字符`。中间出现 `TODO` / `待填` 一律不算——`管理 TODO 清单，支持增删改查`、`处理等待填写的审批表单` 都是合法 description，`--strict` 下照常通过。级别是**提示**，所以 `new` 出来的骨架 `validate` 通过但带 1 条提示，`validate --strict` 判失败。
 
 输出示例（通过）：
 
@@ -165,6 +185,27 @@ skill_zh —— 中文 OpenCode 技能创建工具（CLI 风格单工具）
   [错误 1] 问题：description 超长：1030 字符，上限 1024 字符
            文件：./skills/api-doc-writer/SKILL.md:3
            改法：把细则移到正文或 references/，description 只保留「做什么 + 何时触发 + 不适用边界」
+```
+
+输出示例（description 仍是占位，缺省只提示）：
+
+```text
+校验 ./skills/api-doc-writer：通过
+  name         api-doc-writer（与目录名一致）
+  description  36 字符（上限 1024）
+提示（1 处，缺省不判失败；加 --strict 会判失败）：
+  [提示 1] 问题：description 仍是占位文案（命中「TODO」），不是该技能的真实触发说明
+           文件：./skills/api-doc-writer/SKILL.md:3
+           改法：把 ./skills/api-doc-writer/SKILL.md 的 description 换成「做什么 + 何时触发（含用户真实说法）+ 不适用边界」，再运行 skill_zh validate --strict 复核
+```
+
+失败示例（同一份骨架加 `--strict`）：
+
+```text
+校验 ./skills/api-doc-writer：未通过（1 处错误）
+  [错误 1] 问题：description 仍是占位文案（命中「TODO」），不是该技能的真实触发说明
+           文件：./skills/api-doc-writer/SKILL.md:3
+           改法：把 ./skills/api-doc-writer/SKILL.md 的 description 换成「做什么 + 何时触发（含用户真实说法）+ 不适用边界」，再运行 skill_zh validate --strict 复核
 ```
 
 失败示例（同时有错误与提示：一次列全）：
@@ -218,6 +259,8 @@ skill_zh —— 中文 OpenCode 技能创建工具（CLI 风格单工具）
 ]
 ```
 
+多余字段（例如 `new` 骨架里的 `_comment`）会被忽略，可以放心写备注；`query` / `should_trigger` 仍必须齐备。
+
 输出示例：
 
 ```text
@@ -229,14 +272,21 @@ skill_zh —— 中文 OpenCode 技能创建工具（CLI 风格单工具）
   不应触发却触发（1）
     - 「写一段生日邀请函」 命中 2/2
 汇总：
-  总通过率 0.50（1/2），失败 1 条；触发率均值 0.50 ± 0.71
-  应触发：1 条，通过 1（1.00），失败 0；触发率均值 1.00 ± 0.00
-  不应触发：1 条，通过 0（0.00），失败 1；触发率均值 1.00 ± 0.00
+  总通过率 0.50（1/2），失败 1 条；原始触发率 1.00 ± 0.00（诊断用，非通过率）
+  应触发：1 条，通过 1（1.00），失败 0；原始触发率 1.00 ± 0.00（诊断用，非通过率）
+  不应触发：1 条，通过 0（0.00），失败 1；原始触发率 1.00 ± 0.00（诊断用，非通过率）
   重复 query：无
 镜像：3 个条目，链接镜像（跳过 0 项）
 报告：./skills/api-doc-writer/.evals/eval-2026-10-29T10-00-00-000Z-1a2b.json
 下一步：skill_zh optimize ./skills/api-doc-writer --iterations 3（按失败用例改写 description）
 ```
+
+汇总里两种数字口径不同，别混着读：
+
+| 字段 | 含义 | 是否参与结论 |
+|---|---|---|
+| 总通过率 / 分组通过率 | `pass` 判定（`should_trigger=true` 要求被触发、`false` 要求不被触发） | **是**，成绩 |
+| 原始触发率 | 按极性分别统计「实际被触发」的比例（均值 ± 标准差）；**两组都要看方向**：应触发组越高越好，不应触发组越低越好（1.00 = 全被触发） | 否，**诊断用**：看模型是否偏向触发某一侧 |
 
 失败示例（缺少技能目录）：
 
@@ -365,7 +415,9 @@ skill_zh —— 中文 OpenCode 技能创建工具（CLI 风格单工具）
 
 > shell 等价：`skill-zh package <技能目录> --out <产物路径>`
 
-把技能目录按**白名单**导出成可分发目录（**不产出 npm 包**）。导出前先做与 `validate` 同源的结构检查（`SKILL.md` 结构/frontmatter、目录名与 `name` 一致，另要求 `references/` 存在）；不合规直接拒绝，**不产出半成品**。
+把技能目录按**白名单**导出成可分发目录（**不产出 npm 包**）。导出前先做与 `validate` 同源的结构检查（`SKILL.md` 结构/frontmatter、目录名与 `name` 一致）；不合规直接拒绝，**不产出半成品**。
+
+`references/` 与 `agents/`、`templates/` 一样是**可选**的：只有 `SKILL.md` 的简单技能同样能导出，产物就只有 `SKILL.md`。
 
 导入 / 安装共用同一份白名单：只含 `SKILL.md`、`agents/**`、`references/**`、`templates/**`。安装器元数据（版本、属主清单、备份）在 `~/.config/opencode/skills/.skill-zh-state/`，**永远不会被导出**（约束见 [design/技能安装与目录问题.md](design/技能安装与目录问题.md)）。
 
@@ -388,7 +440,7 @@ skill_zh package ./skills/api-doc-writer --out ./skills-package/api-doc-writer
 
 ```text
 导出 ./skills/api-doc-writer → ./skills-package/api-doc-writer
-自检：SKILL.md 存在；references/ 存在；目录名与 frontmatter name 一致
+自检：SKILL.md 存在；目录名与 frontmatter name 一致；只导出白名单内容
 文件（4 个，共 8234 字节）：
   SKILL.md  1204 字节
   agents/analyzer.md  2310 字节

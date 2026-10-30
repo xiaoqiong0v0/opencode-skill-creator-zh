@@ -44,8 +44,9 @@ export const HELP_TEXT = `skill_zh —— 中文 OpenCode 技能创建工具（C
 
 子命令：
   help      显示本帮助，覆盖全部子命令与示例
-  new       按中文模板生成技能骨架（SKILL.md + references/），--force 覆盖前留 .bak
-  validate  校验 SKILL.md 结构与 frontmatter，--strict 把长度/命名提示升级为错误
+  new       按中文模板生成技能骨架（SKILL.md + references/ + eval_set.json），--force 覆盖前留 .bak、
+            eval_set.json 始终不覆盖（已存在就保留原评测集）
+  validate  校验 SKILL.md 结构与 frontmatter，--strict 把长度/命名/占位提示升级为错误
   eval      跑触发率评测，输出通过率与失败用例
   optimize  按评测失败反复改写 description（先训练/测试集切分）
   package   只导出白名单内的技能目录（--out 必填，不产出 npm 包）

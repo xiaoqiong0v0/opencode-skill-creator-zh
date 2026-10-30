@@ -106,6 +106,84 @@ test("description 超长：缺省只提示（仍通过），--strict 判失败�
   });
 });
 
+test("description 仍是占位（开头 TODO: / 待填: / 整体等于模板原文）：缺省只提示，--strict 判失败", () => {
+  withTempRoot((root) => {
+    const placeholders = [
+      "TODO: 用一句话写清做什么 + 何时触发 + 不适用",
+      "待填：这个技能做什么、什么时候用",
+      "todo: 小写 + 半角冒号也算",
+      // 整体等于模板占位原文（与 `templates/skill-md.md` 渲染值逐字一致）。
+      "TODO: 用一句话写清做什么 + 何时触发 + 不适用，≤ 60 字符",
+    ];
+    for (const description of placeholders) {
+      const skillDir = writeSkill(root, "demo-skill", `name: demo-skill\ndescription: "${description}"`);
+      const args = `validate "${toDisplay(skillDir)}"`;
+
+      const lenient = runCommand(parseArgs(args), ctxOf(root));
+      assert.equal(lenient.ok, true, lenient.output);
+      assert.ok(lenient.output.includes("：通过"), lenient.output);
+      assert.ok(lenient.output.includes("提示（1 处"), lenient.output);
+      assert.ok(lenient.output.includes("description 仍是占位文案"), lenient.output);
+
+      const strict = runCommand(parseArgs(`${args} --strict`), ctxOf(root));
+      assert.equal(strict.ok, false, strict.output);
+      assert.ok(strict.output.includes("：未通过（1 处错误）"), strict.output);
+      assert.ok(strict.output.includes("description 仍是占位文案"), strict.output);
+    }
+  });
+});
+
+test("占位判据只锚定开头：description 中间出现 TODO / 待填 的合法技能在 --strict 下通过", () => {
+  withTempRoot((root) => {
+    const legit = [
+      "管理 TODO 清单，支持增删改查",
+      "处理等待填写的审批表单",
+      "教用户给代码写 TODO 注释",
+    ];
+    for (const description of legit) {
+      const skillDir = writeSkill(root, "demo-skill", `name: demo-skill\ndescription: "${description}"`);
+      const result = runCommand(parseArgs(`validate "${toDisplay(skillDir)}" --strict`), ctxOf(root));
+
+      assert.equal(result.ok, true, `${description} → ${result.output}`);
+      assert.ok(result.output.includes("：通过"), result.output);
+      assert.ok(!result.output.includes("description 仍是占位文案"), result.output);
+    }
+  });
+});
+
+test("只查 description：正文里的 TODO / 待填 与单词内部的 todo 都不报占位", () => {
+  withTempRoot((root) => {
+    const skillDir = writeSkill(root, "demo-skill", `name: demo-skill\ndescription: 把待办事项拆成可执行步骤`);
+    writeFileSync(
+      join(skillDir, "SKILL.md"),
+      [
+        "---",
+        "name: demo-skill",
+        "description: 把待办事项拆成可执行步骤",
+        "---",
+        "",
+        "# 测试技能",
+        "",
+        "TODO: 把本节补完（正文占位不参与校验）",
+        "待填：示例待补充",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const result = runCommand(parseArgs(`validate "${toDisplay(skillDir)}" --strict`), ctxOf(root));
+    assert.equal(result.ok, true, result.output);
+    assert.ok(result.output.includes("：通过"), result.output);
+    assert.ok(!result.output.includes("description 仍是占位文案"), result.output);
+
+    // 中间出现：mastodon 里含 "todo" 子串，但不是开头占位形态。
+    const wordDir = writeSkill(root, "word-skill", `name: word-skill\ndescription: 对标 mastodon 的联邦时间线整理`);
+    const wordResult = runCommand(parseArgs(`validate "${toDisplay(wordDir)}" --strict`), ctxOf(root));
+    assert.equal(wordResult.ok, true, wordResult.output);
+    assert.ok(!wordResult.output.includes("description 仍是占位文案"), wordResult.output);
+  });
+});
+
 test("目录名与 name 不一致：判未通过，改法给出两种改法", () => {
   withTempRoot((root) => {
     const skillDir = writeSkill(root, "demo-skill", "name: other-skill\ndescription: 名字与目录不一致");

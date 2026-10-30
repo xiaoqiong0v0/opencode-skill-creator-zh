@@ -1,0 +1,15 @@
+[
+  {
+    "_comment": "三条 query 都要换成针对本技能的真实说法：前两条写用户真会说、且该触发本技能的话，第三条写不该触发但最容易混淆的话。改完运行 skill_zh eval <技能目录> 复核。",
+    "query": "TODO：换成一条该触发 {{name}} 的用户原话",
+    "should_trigger": true
+  },
+  {
+    "query": "TODO：换一条说法不同、同样该触发 {{name}} 的 query",
+    "should_trigger": true
+  },
+  {
+    "query": "TODO：换一条不该触发 {{name}}、但容易被误判的 query",
+    "should_trigger": false
+  }
+]

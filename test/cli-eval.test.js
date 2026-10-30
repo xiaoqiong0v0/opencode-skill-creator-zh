@@ -132,6 +132,14 @@ test("eval 输出通过率、逐条结果、报告路径与镜像汇总（非对
     assert.match(output, /总通过率 0\.50（1\/2），失败 1 条/);
     assert.match(output, /应触发：1 条，通过 1（1\.00），失败 0/);
     assert.match(output, /不应触发：1 条，通过 0（0\.00），失败 1/);
+    // 触发率是诊断量，不是得分：每一处都要带「诊断用，非通过率」，避免被读成「只过了一半」。
+    assert.ok(
+      output.includes("总通过率 0.50（1/2），失败 1 条；原始触发率 1.00 ± 0.00（诊断用，非通过率）"),
+      output,
+    );
+    assert.ok(output.includes("应触发：1 条，通过 1（1.00），失败 0；原始触发率 1.00 ± 0.00（诊断用，非通过率）"), output);
+    assert.ok(output.includes("不应触发：1 条，通过 0（0.00），失败 1；原始触发率 1.00 ± 0.00（诊断用，非通过率）"), output);
+    assert.ok(!output.includes("触发率均值"), output);
     assert.ok(output.includes("重复 query：无"));
     const reportLine = output.split("\n").find((line) => line.startsWith("报告："));
     assert.ok(reportLine, "缺少报告路径");
@@ -263,6 +271,33 @@ test("eval 隔离根 deny 写入失败 → 整轮失败且不落报告", async (
   } finally {
     fs.writeFileSync = originalWrite;
     syncBuiltinESMExports();
+    rmSync(root, { recursive: true, force: true });
+    harness.cleanup();
+  }
+});
+
+test("new 生成的 eval_set.json 骨架可直接跑（假 opencode，不花钱）", async () => {
+  const harness = createFakeOpencodeHarness();
+  const root = mkdtempSync(join(tmpdir(), "skill-cli-eval-from-new-"));
+  try {
+    // 只给技能名，其余交给 new：骨架自带的评测集必须能被 eval 直接读起来。
+    const scaffold = await dispatch("new demo-skill --dir .", { directory: root, worktree: root });
+    assert.ok(scaffold.startsWith("已生成技能骨架："), scaffold);
+    mkdirSync(join(root, ".opencode"), { recursive: true });
+    writeFileSync(join(root, ".opencode", "opencode.json"), "{}\n");
+
+    const output = await withFakeOpencode(harness, async (writeScenario) => {
+      writeScenario({ lines: [triggerLine("read")], exitCode: 0 });
+      return runEvalCommand(root, "eval ./demo-skill --runs 1 --workers 1");
+    });
+
+    // 2 正 1 负：骨架 query 全是占位，但评测本身必须跑通（不再报「找不到评测集」）。
+    assert.ok(output.startsWith("评测 ./demo-skill：通过率"), output);
+    assert.match(output, /通过率 \d\.\d\d（\d\/3，每条 1 次/);
+    assert.ok(output.includes("汇总："), output);
+    assert.ok(output.includes("报告："), output);
+    assert.ok(!output.includes("评测集不存在"), output);
+  } finally {
     rmSync(root, { recursive: true, force: true });
     harness.cleanup();
   }

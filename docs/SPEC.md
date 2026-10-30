@@ -39,11 +39,11 @@
 | 子命令 | 语义 | 必备行为 |
 |---|---|---|
 | `help` | 用法 | 无参数或 `help` 时返回完整用法 |
-| `new` | 新建技能骨架 | 产出 `SKILL.md` + `references/`；目标目录已存在时拒绝覆盖，并提示 `--force` |
-| `validate` | 校验技能目录 | 校验 `SKILL.md` 存在、frontmatter 合法、必填字段齐全、目录名与 `name` 一致、description 长度；`--strict` 时 description 长度与命名规范从提示升级为错误 |
+| `new` | 新建技能骨架 | 产出 `SKILL.md` + `references/` + 可直接跑的最小 `eval_set.json`（2 正 1 负）；目标目录已存在时拒绝覆盖，并提示 `--force`；`--force` 不覆盖已存在的评测集 |
+| `validate` | 校验技能目录 | 校验 `SKILL.md` 存在、frontmatter 合法、必填字段齐全、目录名与 `name` 一致、description 长度；`--strict` 时 description 长度、命名规范与「description 仍是占位文案」从提示升级为错误（占位判据：**开头** `TODO:` / `待填:` 或整体等于模板原文，中间出现不算） |
 | `eval` | 触发率评测 | 输出通过率、逐条 query 的触发结果、失败用例清单；benchmark 类汇总随评测输出一并给出 |
 | `optimize` | 迭代改写 description | 训练/测试集切分，输出每轮通过率与最终 description |
-| `package` | 导出技能目录 | **只导出目录**（不产出 npm 包），`--out <产物路径>` 必填；发布 npm 由用户手动执行 |
+| `package` | 导出技能目录 | **只导出目录**（不产出 npm 包），`--out <产物路径>` 必填；白名单内 `agents/`、`references/`、`templates/` 均可选；发布 npm 由用户手动执行 |
 | `install` | 把包内 `skill/` 装到用户级技能目录 | 承担冲突探测、白名单拷贝、元数据外置；`--dry-run` 只报冲突不写盘；`--dir` 改目标根；默认**不覆盖**用户改过的 `SKILL.md`，`--force` 才覆盖；冲突与处置口径见 R6.1 |
 
 - 未知子命令 → 走 R5 三段式，改法里列出全部可用子命令（不另外打印完整帮助）。
@@ -94,7 +94,7 @@
 
 | 编号 | 要求（可判定） | 判定方式 |
 |---|---|---|
-| I1 | **白名单拷贝**：安装只写 `SKILL.md`、`agents/**`、`references/**`、`templates/**`；白名单外条目跳过（比较不区分大小写）；技能目录内不得出现安装器元数据 | 单测：源目录另含 `dist/`、`bin/`、`test/`，安装后目标目录无这些条目，且文件集合 = 白名单集合 |
+| I1 | **白名单拷贝**：安装只写 `SKILL.md`、`agents/**`、`references/**`、`templates/**`；白名单外条目跳过（比较不区分大小写）；技能目录内不得出现安装器元数据。**白名单内的目录都可选**——`SKILL.md` 是唯一必需项 | 单测：源目录另含 `dist/`、`bin/`、`test/`，安装后目标目录无这些条目，且文件集合 = 白名单集合 |
 | I2 | **元数据外置**：安装版本、属主文件清单、用户改动备份只写 `~/.config/opencode/skills/.skill-zh-state/<name>.json`（备份落同目录），技能目录只留技能本体 | 单测：安装后技能目录内无点开头条目、无 `*.user-backup`；状态目录含该技能 json |
 | I3 | **安装前探测同名技能**：按发现链探测 `.claude`、`.agents`、OpenCode 配置目录、`skills.paths`；项目目录按 `directory` → `worktree` 逐层，每个来源按 `skills/<任意层级>/SKILL.md` 递归，目录名或 frontmatter `name` 命中都算；遵守 `OPENCODE_DISABLE_EXTERNAL_SKILLS` 与 `OPENCODE_DISABLE_CLAUDE_CODE_SKILLS`；发现同名**只提示不改写**，按「外部 → config → paths」说明当前哪个生效 | 单测：`.claude` / `.agents` / 项目级各命中一次；嵌套 `skills/**/SKILL.md` 与 frontmatter name 命中；`skills.paths` 最后覆盖；环境变量关闭判定正确；安装输出点名路径且探测目录哈希前后一致 |
 | I4 | **禁用手段只给真正生效的动作**：改 `SKILL.md` 文件名、移出 `skills/`、改 frontmatter `name`、权限 deny、用环境变量关掉外部来源；不出现「重命名目录即可禁用」 | `grep -n "重命名目录"`（`docs/`、`src/`）：每条命中所在的句子必须含「不能 / 无效 / 不要 / 不给 / 不出现 / 建议」之一，作为**建议动作**出现即判失败；单测断言提示文案枚举的动作属于上述 5 类 |
@@ -160,6 +160,10 @@
 | R6.2-J9 | 单测：隔离根顶层条目 = 根配置文档 + `.opencode/`（含兄弟技能、非 skills 条目）+ 被引用文件，四项之外不存在；被测技能按内容哈希不可见 |
 | B4-eval | `skill_zh eval <技能目录>` 输出通过率（passed/total、每条次数、阈值）、逐条结果、失败用例清单、镜像汇总与报告路径；`--runs` / `--workers` / `--timeout` / `--model` / `--agent` / `--eval-set` / `--log-dir` / `--no-shadow-guard` 全部生效；缺参、评测集缺失、参数非法均走三段式 |
 | B5-package | `skill_zh package <技能目录> --out <目录>` 只导出白名单四项并列出跳过项；`--out` 缺失 / 指向源目录内部 / 目标非空 / 结构不合规均走三段式且不产出半成品；输出含文件相对路径、字节数与「npm 发布由用户手动执行」 |
+| B2E-new | `skill_zh new` 同时产出 `SKILL.md`、`references/示例.md` 与 `eval_set.json`（2 正 1 负、字段可被 `eval` 直接解析）；`new` 后直接 `eval --runs 1` 能跑；`--force` 重写 `SKILL.md` / `references/示例.md` 并留 `.bak`，已存在的 `eval_set.json` 原样保留 |
+| B2E-validate | description **以 `TODO:` / `待填:` 开头**（半角或全角冒号、大小写不敏感）或**整体等于模板占位原文**时产出**提示**级问题；中间出现 `TODO` / `待填` 不报（`管理 TODO 清单`、`处理等待填写的审批表单` 在 `--strict` 下必须通过）；只查 description 不查正文；`new` 骨架 `validate` 通过但带 1 条提示、`validate --strict` 未通过；换成真实文案后两级都通过 |
+| B2E-package | 无 `references/` 的技能导出成功且产物只有白名单内实际存在的文件（有 `agents/` 一并带上）；缺 `SKILL.md` 或目录名与 `name` 不一致仍拒绝导出 |
+| B2E-eval | `eval` 汇总行把触发率标为诊断量：`原始触发率 x.xx ± y.yy（诊断用，非通过率）`，主行与按极性分组行一致；文档示例同步 |
 | B5-install | `skill_zh install --dry-run` 不写盘；真实安装后目标技能目录 = 包内白名单集合；重复安装幂等；启动钩子在测试环境不写盘（`NODE_TEST_CONTEXT` / `SKILL_ZH_NO_STARTUP_INSTALL=1`） |
 | B4-optimize | `skill_zh optimize <技能目录>` 输出每轮训练/测试通过率与最终 description，并在 `<技能目录>/.evals/` 落盘 HTML 实时报告与 JSON 结果；`--iterations` 缺值/非法走三段式 |
 | R7 | `npm run typecheck` 退出码 0；`npm test` 退出码 0；对 `README.md`、`docs/`、`src/` 搜跨技能引用措辞无命中（来源/许可段落除外） |

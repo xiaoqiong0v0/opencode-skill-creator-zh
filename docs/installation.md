@@ -138,7 +138,8 @@ OpenCode **v1.18.25** 的技能发现源不止一处（源码 `packages/opencode
 2. `~/.config/opencode/skills/.skill-zh-state/opencode-skill-creator-zh.json` 存在，记录了安装版本。
 3. 在 OpenCode 里输入 `skill_zh help`：应返回 7 个子命令与示例；`skill_zh install --dry-run` 可预览安装。
 4. 工具列表只应新增 **1 个**工具（`skill_zh`）；如果还能看到 `skill_validate` 之类的名字，说明加载的是上游英文版插件，不是本包。
-5. 技能确实被 OpenCode 发现：若没触发，按上文「装到 `~/.config/opencode/skills` 不等于一定生效」逐项排查同名覆盖。
+5. 在任意临时目录跑 `skill_zh new demo-skill --dir .`：应生成 `SKILL.md`、`references/示例.md`、`eval_set.json` 三样；`skill_zh validate ./demo-skill` 通过但带 1 条「description 仍是占位文案」提示，加 `--strict` 判失败（说明模板与校验口径一致）。此时直接 `skill_zh eval ./demo-skill --runs 1` 也能跑（会调 opencode、产生费用）。
+6. 技能确实被 OpenCode 发现：若没触发，按上文「装到 `~/.config/opencode/skills` 不等于一定生效」逐项排查同名覆盖。
 
 配置写入成功（命令无报错）**不等于**插件加载成功；工具缺失时优先看 OpenCode 的插件加载错误，而不是反复改配置。
 

@@ -480,17 +480,29 @@ test("eval 汇总：通过率、按 should_trigger 分组与重复 query 分组"
   assert.equal(shouldNot.total, 1);
   assert.equal(shouldNot.passed, 1);
 
-  // 统计口径与 benchmark 同源：触发率均值/标准差由 calculateStats 计算。
+  // 统计口径与 benchmark 同源：原始触发率的均值/标准差由 calculateStats 计算。
   assert.equal(should.trigger_rate.mean, 0.6667);
   assert.equal(should.trigger_rate.max, 1);
   assert.deepEqual(summary.duplicates, [{ query: "重复项", total: 2, passed: 1 }]);
 
   const lines = formatEvalSummary(summary).join("\n");
   assert.match(lines, /^汇总：/);
-  assert.match(lines, /总通过率 0\.75（3\/4），失败 1 条/);
-  assert.match(lines, /应触发：3 条，通过 2（0\.67），失败 1/);
-  assert.match(lines, /不应触发：1 条，通过 1（1\.00），失败 0/);
+  // 通过率 = 成绩；触发率 = 诊断量。每行都要标口径，否则「0.50 ± x」会被读成得分。
+  assert.ok(
+    lines.includes("总通过率 0.75（3/4），失败 1 条；原始触发率 0.50 ± 0.58（诊断用，非通过率）"),
+    lines,
+  );
+  assert.ok(
+    lines.includes("应触发：3 条，通过 2（0.67），失败 1；原始触发率 0.67 ± 0.58（诊断用，非通过率）"),
+    lines,
+  );
+  assert.ok(
+    lines.includes("不应触发：1 条，通过 1（1.00），失败 0；原始触发率 0.00 ± 0.00（诊断用，非通过率）"),
+    lines,
+  );
   assert.match(lines, /重复 query：1 组，「重复项」×2（通过 1\/2）/);
+  // 旧文案（只说「触发率均值」，不带口径）必须彻底消失。
+  assert.doesNotMatch(lines, /触发率均值/);
 });
 
 test("eval 汇总：没有重复 query 时明确写「无」", () => {

@@ -70,7 +70,7 @@ description 决定技能会不会被调用，是**唯一触发依据**：必须�
 
 ### 4.3 测试用例
 
-草稿完成后，写 2–3 条**真实用户会说**的测试 prompt，先给用户过目再跑。存默认位置 `<技能目录>/eval_set.json`，格式为 `[{"query":"…","should_trigger":true|false}]`；需要别的路径时用 `skill_zh eval --eval-set <路径>`。此步只写 query 与 should_trigger，断言留到 4.4 起草；跑评测后报告与产物落 `<技能目录>/.evals/`。完整 schema（含 `expectations`/`assertions`）见 `references/schemas.md`。
+草稿完成后，写 2–3 条**真实用户会说**的测试 prompt，先给用户过目再跑。存默认位置 `<技能目录>/eval_set.json`，格式为 `[{"query":"…","should_trigger":true|false}]`；需要别的路径时用 `skill_zh eval --eval-set <路径>`。用 `skill_zh new` 建的技能已有 2 正 1 负的骨架，直接把占位 `query` 换成真实说法即可（多余字段会被忽略）。此步只写 query 与 should_trigger，断言留到 4.4 起草；跑评测后报告与产物落 `<技能目录>/.evals/`。完整 schema（含 `expectations`/`assertions`）见 `references/schemas.md`。
 
 ### 4.4 运行双路对比（本节是一口气跑完的连续流程）
 
@@ -130,8 +130,8 @@ description 决定技能会不会被调用，是**唯一触发依据**：必须�
 | 子命令 | 用途 |
 |---|---|
 | `skill_zh help` | 打印全部子命令与可复制示例（空参数等价） |
-| `skill_zh new <技能名> [--dir <目录>] [--force]` | 按中文模板生成技能骨架（`SKILL.md` + `references/`） |
-| `skill_zh validate <技能目录> [--strict]` | 校验 SKILL.md 结构与 frontmatter（解析并报告结构问题） |
+| `skill_zh new <技能名> [--dir <目录>] [--force]` | 按中文模板生成技能骨架（`SKILL.md` + `references/` + 可直接跑的最小 `eval_set.json`；`--force` 不覆盖已有评测集） |
+| `skill_zh validate <技能目录> [--strict]` | 校验 SKILL.md 结构与 frontmatter（含 description 占位文案；`--strict` 把提示升级为错误） |
 | `skill_zh eval <技能目录> [--runs N] [--workers N]` | 触发率评测：通过率、逐条结果、失败用例，报告写 `<技能目录>/.evals/` |
 | `skill_zh optimize <技能目录> [--iterations N]` | 按评测失败反复改写 description（训练/测试集 6:4） |
 | `skill_zh package <技能目录> --out <产物路径>` | 只导出可分发的技能目录 |

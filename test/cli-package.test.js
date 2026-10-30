@@ -1,6 +1,8 @@
 /**
  * `skill_zh package` 的白名单导出、`--out` 校验与结构自检（docs/SPEC.md R2/R6.1-I1、docs/tools.md `package`）。
  *
+ * 白名单外的规则与 `validate` 同源；`references/` 是可选目录（只有 `SKILL.md` 的技能也能导出）。
+ *
  * 全部在系统临时目录里跑；导出目标都在临时根内，不写仓库与用户目录。
  */
 
@@ -219,22 +221,54 @@ test("结构不合规拒绝导出，不产出半成品", () => {
   });
 });
 
-test("缺少 references/ 时拒绝导出", () => {
+test("没有 references/ 的技能也能导出：产物只有 SKILL.md，有 agents/ 则一并带上", () => {
   withTempRoot((root) => {
-    const skillDir = join(root, "skills", "no-refs");
+    // 简单技能（只有正文、没有参考资料）——references/ 是可选的，不该被拦。
     writeFile(
       root,
       "skills/no-refs/SKILL.md",
       ["---", "name: no-refs", "description: 导出测试技能", "---", "", "# 测试技能", ""].join("\n"),
     );
+    const skillDir = join(root, "skills", "no-refs");
 
+    const outDir = join(root, "pkg", "no-refs");
     const result = runCommand(
-      parseArgs(`package "${toDisplay(skillDir)}" --out "${toDisplay(join(root, "pkg"))}"`),
+      parseArgs(`package "${toDisplay(skillDir)}" --out "${toDisplay(outDir)}"`),
       ctxOf(root),
     );
 
-    assert.equal(result.ok, false);
-    assert.ok(result.output.includes("缺少 references/ 目录"));
+    assert.equal(result.ok, true, result.output);
+    assert.deepEqual(listFiles(outDir), ["SKILL.md"]);
+    // 自检行不再宣称「references/ 存在」——它已不是导出前提。
+    assert.ok(result.output.includes("自检：SKILL.md 存在；目录名与 frontmatter name 一致；只导出白名单内容"), result.output);
+
+    // 有 agents/ 时白名单照常带上，仍不需要 references/。
+    writeFile(skillDir, "agents/helper.md", "agent\n");
+    const outDir2 = join(root, "pkg", "no-refs-agents");
+    const withAgents = runCommand(
+      parseArgs(`package "${toDisplay(skillDir)}" --out "${toDisplay(outDir2)}"`),
+      ctxOf(root),
+    );
+    assert.equal(withAgents.ok, true, withAgents.output);
+    assert.deepEqual(listFiles(outDir2), ["SKILL.md", "agents/helper.md"]);
+  });
+});
+
+test("缺 SKILL.md 仍拒绝导出（references/ 放宽不等于结构检查放宽）", () => {
+  withTempRoot((root) => {
+    writeFile(root, "skills/no-skill-md/references/ref.md", "reference\n");
+    const skillDir = join(root, "skills", "no-skill-md");
+    const outDir = join(root, "pkg", "no-skill-md");
+
+    const result = runCommand(
+      parseArgs(`package "${toDisplay(skillDir)}" --out "${toDisplay(outDir)}"`),
+      ctxOf(root),
+    );
+
+    assert.equal(result.ok, false, result.output);
+    assert.match(result.output.split("\n")[0], /^错误：导出前校验未通过（1 处错误）$/);
+    assert.ok(result.output.includes("SKILL.md 不存在"), result.output);
+    assert.ok(!existsSync(outDir), `导出失败仍写出了目标目录：${outDir}`);
   });
 });
 

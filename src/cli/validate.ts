@@ -42,6 +42,22 @@ const DESCRIPTION_MAX_LENGTH = 1024;
 /** `compatibility` 上限。 */
 const COMPATIBILITY_MAX_LENGTH = 500;
 
+/**
+ * `new` 生成的占位 description 原文（`templates/skill-md.md` 渲染后的值）。
+ *
+ * `new` 直接用它填模板（见 `src/cli/new.ts`），这里同时作为「整体等于模板原文」的判据，
+ * 避免「生成文案」与「占位判据」各写一份后漂移。
+ */
+export const TEMPLATE_DESCRIPTION = "TODO: 用一句话写清做什么 + 何时触发 + 不适用，≤ 60 字符";
+
+/**
+ * 占位形态：**开头**就是 `TODO` / `待填` 加冒号（半角或全角）。
+ *
+ * 只锚定开头，不做子串匹配：`管理 TODO 清单`、`处理等待填写的审批表单` 都是合法 description，
+ * 中间出现这两个词不构成占位。
+ */
+const PLACEHOLDER_PREFIX = /^\s*(TODO|待填)\s*[:：]/i;
+
 /** 允许出现在 frontmatter 的键（与 `lib/validate.ts` 的 `ALLOWED_PROPERTIES` 同源）。 */
 const ALLOWED_PROPERTIES = ["name", "description", "license", "allowed-tools", "metadata", "compatibility"];
 
@@ -77,6 +93,7 @@ type IssueCategory =
   | "name-length"
   | "description-angle"
   | "description-length"
+  | "description-placeholder"
   | "compatibility-length";
 
 /**
@@ -164,6 +181,23 @@ function classifyVerdict(message: string): IssueCategory | null {
   if (message.includes("未找到 SKILL.md") || message.includes("缺少 YAML frontmatter") || message.includes("frontmatter 格式不正确")) {
     return "structure";
   }
+  return null;
+}
+
+/**
+ * 判断 `description` 是否仍是模板占位文案。
+ *
+ * **只看 description**：正文里写「如何写 TODO」是正常内容，不该误报。判据只有两条，宁窄勿宽：
+ * ① **开头**是 `TODO` / `待填` 加冒号（半角或全角、大小写不敏感）；② 整体等于模板占位原文。
+ * 中间出现 `TODO` / `待填` 一律不算（`管理 TODO 清单`、`处理等待填写的审批表单` 都是合法文案）。
+ *
+ * @param description frontmatter 的 description（已去引号与首尾空白）
+ * @returns 命中的占位标记；不是占位时为 `null`
+ */
+function findPlaceholderMarker(description: string): string | null {
+  const prefix = PLACEHOLDER_PREFIX.exec(description);
+  if (prefix !== null) return prefix[0].trim();
+  if (description === TEMPLATE_DESCRIPTION) return "模板占位原文";
   return null;
 }
 
@@ -307,6 +341,20 @@ function scanFrontmatter(
       severity: "hint",
       problem: `description 超长：${countChars(description)} 字符，上限 ${DESCRIPTION_MAX_LENGTH} 字符`,
       fix: "把细则移到正文或 references/，description 只保留「做什么 + 何时触发 + 不适用边界」",
+      file: skillFile,
+      ...(descriptionLine === undefined ? {} : { line: descriptionLine }),
+    });
+  }
+
+  // 占位文案独立判定（不与上面的 else-if 串起来）：超长 + 占位要各报一条，用户才知道两处都得改。
+  // 级别固定为 hint——`--strict` 的升级逻辑只认 `severity:"hint"`，写死 error 会绕过它。
+  const placeholder = description === "" ? null : findPlaceholderMarker(description);
+  if (placeholder !== null) {
+    covered.add("description-placeholder");
+    issues.push({
+      severity: "hint",
+      problem: `description 仍是占位文案（命中「${placeholder}」），不是该技能的真实触发说明`,
+      fix: `把 ${skillFile} 的 description 换成「做什么 + 何时触发（含用户真实说法）+ 不适用边界」，再运行 skill_zh validate --strict 复核`,
       file: skillFile,
       ...(descriptionLine === undefined ? {} : { line: descriptionLine }),
     });

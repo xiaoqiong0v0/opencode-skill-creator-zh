@@ -1,9 +1,12 @@
 /**
- * `skill_zh new`：按 `templates/` 里的中文模板生成技能骨架（`SKILL.md` + `references/`）。
+ * `skill_zh new`：按 `templates/` 里的中文模板生成技能骨架（`SKILL.md` + `references/` +
+ * `eval_set.json`）。
  *
- * 两条硬口径：① 技能名必须匹配 `^[a-z0-9]+(-[a-z0-9]+)*$` 且 ≤ 64 字符——它同时是目录名与
+ * 三条硬口径：① 技能名必须匹配 `^[a-z0-9]+(-[a-z0-9]+)*$` 且 ≤ 64 字符——它同时是目录名与
  * frontmatter 的 `name`，命名不合规的技能在加载期就会被丢弃；② 目标目录已存在且非空时**默认拒绝**，
- * 只有显式 `--force` 才覆盖（覆盖前把旧 `SKILL.md` 备份成 `SKILL.md.bak`），避免误删用户已写的内容。
+ * 只有显式 `--force` 才覆盖（覆盖前把旧 `SKILL.md`、`references/示例.md` 备份成 `.bak`），避免误删
+ * 用户已写的内容；③ 已存在的 `eval_set.json` **一律保留**——它是用户手写 / 调过的评测集，重跑
+ * `--force` 也不该吃掉（其余生成物有 `.bak` 兜底，评测集没有「可重建」这一说）。
  */
 
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -12,6 +15,7 @@ import { fileURLToPath } from "node:url";
 
 import { log } from "../lib/logger.js";
 import { formatError } from "./errors.js";
+import { TEMPLATE_DESCRIPTION } from "./validate.js";
 import type { DispatchResult, HandlerInput } from "./types.js";
 
 /** 技能名的合法形式：小写字母/数字分段，段间单个连字符（kebab-case）。 */
@@ -38,7 +42,13 @@ const REFERENCES_DIR = "references";
 /** 生成的占位资料文件名（中文名，读技能时可直接看懂用途）。 */
 const REFERENCE_FILE = "示例.md";
 
-/** `--force` 覆盖时旧 `SKILL.md` 的备份后缀。 */
+/** 评测集骨架模板文件名。 */
+const EVAL_SET_TEMPLATE_FILE = "eval-set.json";
+
+/** 评测集文件名（`eval` / `optimize` 的默认读取位置，见 `src/cli/eval-common.ts`）。 */
+const EVAL_SET_FILE = "eval_set.json";
+
+/** `--force` 覆盖时旧文件的备份后缀。 */
 const BACKUP_SUFFIX = ".bak";
 
 /** 生成脚本里的 `name` 占位符。 */
@@ -46,9 +56,6 @@ const NAME_PLACEHOLDER = "{{name}}";
 
 /** 生成脚本里的 `description` 占位符。 */
 const DESCRIPTION_PLACEHOLDER = "{{description}}";
-
-/** 骨架里预填的 description：提示作者按「做什么 + 何时触发 + 不适用」改写。 */
-const TODO_DESCRIPTION = "TODO: 用一句话写清做什么 + 何时触发 + 不适用，≤ 60 字符";
 
 /**
  * 把路径统一成 `/` 分隔，供输出与改法命令使用。
@@ -75,10 +82,11 @@ function readTemplate(fileName: string): string {
 }
 
 /**
- * 用技能名替换模板占位符。
+ * 用技能名与占位 description 替换模板占位符。
  *
  * description 与 name 一起替换：description 在模板里是带引号的 TODO 文案，换行与引号都由
- * 模板负责，代码只做纯文本替换，避免在 ts 里内联大段文案。
+ * 模板负责，代码只做纯文本替换，避免在 ts 里内联大段文案。占位文案取自 `validate` 导出的
+ * {@link TEMPLATE_DESCRIPTION}——`--strict` 的占位判据认「整体等于它」，两处必须完全同源。
  *
  * @param template 模板原文
  * @param name 合法技能名
@@ -87,7 +95,7 @@ function readTemplate(fileName: string): string {
 function renderTemplate(template: string, name: string): string {
   return template
     .replaceAll(NAME_PLACEHOLDER, name)
-    .replaceAll(DESCRIPTION_PLACEHOLDER, TODO_DESCRIPTION);
+    .replaceAll(DESCRIPTION_PLACEHOLDER, TEMPLATE_DESCRIPTION);
 }
 
 /**
@@ -183,8 +191,12 @@ export function newHandler(input: HandlerInput): DispatchResult {
   const skillMdPath = join(targetDir, "SKILL.md");
   const referencesDir = join(targetDir, REFERENCES_DIR);
   const referencePath = join(referencesDir, REFERENCE_FILE);
+  const evalSetPath = join(targetDir, EVAL_SET_FILE);
   const skillTemplate = readTemplate(SKILL_TEMPLATE_FILE);
   const referenceTemplate = readTemplate(REFERENCE_TEMPLATE_FILE);
+  const evalSetTemplate = readTemplate(EVAL_SET_TEMPLATE_FILE);
+  // 已存在的评测集视为用户资产：`--force` 也不覆盖，只在输出里点名「已保留」。
+  const keepEvalSet = existsSync(evalSetPath);
 
   mkdirSync(referencesDir, { recursive: true });
 
@@ -202,6 +214,9 @@ export function newHandler(input: HandlerInput): DispatchResult {
 
   writeFileSync(skillMdPath, renderTemplate(skillTemplate, name), "utf-8");
   writeFileSync(referencePath, referenceTemplate, "utf-8");
+  if (!keepEvalSet) {
+    writeFileSync(evalSetPath, renderTemplate(evalSetTemplate, name), "utf-8");
+  }
 
   log.info(`已生成技能骨架：${targetDir}`);
 
@@ -209,14 +224,22 @@ export function newHandler(input: HandlerInput): DispatchResult {
     `已生成技能骨架：${displayTarget}`,
     "  SKILL.md               （frontmatter：name、description 占位，正文为待填大纲）",
     `  ${REFERENCES_DIR}/${REFERENCE_FILE}      （按需加载的参考资料，文件开头写明何时读）`,
+    keepEvalSet
+      ? `  ${EVAL_SET_FILE}          （已存在，保留原评测集未覆盖）`
+      : `  ${EVAL_SET_FILE}          （2 正 1 负的可跑评测集骨架，query 仍是 TODO 占位）`,
   ];
   for (const backup of backups) {
     lines.push(`  已备份：${backup}`);
   }
+  if (keepEvalSet) {
+    lines.push(`  已保留：${toDisplayPath(join(displayTarget, EVAL_SET_FILE))}（未覆盖已有评测集）`);
+  }
   lines.push(
     "下一步：",
     `  1. 编辑 ${toDisplayPath(join(displayTarget, "SKILL.md"))}，把 description 的 TODO 换成「做什么 + 何时触发 + 不适用」`,
-    `  2. 运行 skill_zh validate ${displayTarget} 复核结构`,
+    `  2. 编辑 ${toDisplayPath(join(displayTarget, EVAL_SET_FILE))}，把占位 query 换成针对本技能的真实说法（保留原评测集时只复核）`,
+    `  3. 运行 skill_zh validate ${displayTarget} --strict 复核结构（占位未改完会判失败）`,
+    `  4. 运行 skill_zh eval ${displayTarget} --runs 1 试跑评测（调用 opencode，会产生费用）`,
   );
 
   return { ok: true, output: lines.join("\n") };

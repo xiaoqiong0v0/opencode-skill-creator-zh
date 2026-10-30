@@ -5,7 +5,8 @@
  *   1. `--out` 必填，且导出目标不能落在源目录内部（否则会自我复制）；
  *   2. 导出前先做与 `validate` 同源的结构检查，不产出半成品；
  *   3. 只导出白名单（`SKILL.md`、`agents/**`、`references/**`、`templates/**`），
- *      白名单外条目跳过并列出来；安装器元数据永远不在白名单里，所以不会被导出。
+ *      白名单外条目跳过并列出来；`references/` 与 `agents/` 都是可选的——只有 `SKILL.md`
+ *      的技能同样能导出。安装器元数据永远不在白名单里，所以不会被导出。
  */
 
 import { copyFileSync, existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
@@ -30,22 +31,6 @@ function isNonEmptyDir(dir: string): boolean {
   if (!existsSync(dir)) return false;
   try {
     return statSync(dir).isDirectory() && readdirSync(dir).length > 0;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * 判断技能目录是否含 `references/`（目录名比较不区分大小写）。
- *
- * @param skillDir 技能目录
- * @returns 存在时为 `true`
- */
-function hasReferencesDir(skillDir: string): boolean {
-  try {
-    return readdirSync(skillDir, { withFileTypes: true }).some(
-      (entry) => entry.isDirectory() && entry.name.toLowerCase() === "references",
-    );
   } catch {
     return false;
   }
@@ -145,24 +130,16 @@ export function packageHandler(input: HandlerInput): DispatchResult {
     };
   }
 
-  // 与 validate 同源的结构检查：有错误就拒绝导出，不产出半成品。
+  // 与 validate 同源的结构检查：有错误就拒绝导出，不产出半成品。`references/` 不在检查项内
+  // ——它是可选目录（简单技能可以只有 SKILL.md），白名单本来就不要求它存在。
   const issues = collectIssues(sourcePath, displaySource);
   const errors = issues.filter((issue) => issue.severity === "error");
-  const extraErrors: Issue[] = [];
-  if (!hasReferencesDir(sourcePath)) {
-    extraErrors.push({
-      severity: "error",
-      problem: `缺少 references/ 目录：${displaySource}`,
-      fix: `在 ${displaySource} 下新建 references/ 并放入按需加载的参考资料（可用 skill_zh new 生成骨架）`,
-    });
-  }
-  const allErrors = [...errors, ...extraErrors];
 
-  if (allErrors.length > 0) {
-    log.info(`package 校验未通过：${displaySource}（${allErrors.length} 处错误）`);
+  if (errors.length > 0) {
+    log.info(`package 校验未通过：${displaySource}（${errors.length} 处错误）`);
     return {
       ok: false,
-      output: `错误：导出前校验未通过（${allErrors.length} 处错误）\n改法：\n${renderIssues(allErrors).join("\n")}\n可用：skill_zh help`,
+      output: `错误：导出前校验未通过（${errors.length} 处错误）\n改法：\n${renderIssues(errors).join("\n")}\n可用：skill_zh help`,
     };
   }
 
@@ -179,7 +156,7 @@ export function packageHandler(input: HandlerInput): DispatchResult {
 
   const lines = [
     `导出 ${displaySource} → ${displayOut}`,
-    "自检：SKILL.md 存在；references/ 存在；目录名与 frontmatter name 一致",
+    "自检：SKILL.md 存在；目录名与 frontmatter name 一致；只导出白名单内容",
     `文件（${bundle.files.length} 个，共 ${formatBytes(totalBytes)}）：`,
     ...bundle.files.map((file) => `  ${file.relativePath}  ${formatBytes(file.size)}`),
   ];
