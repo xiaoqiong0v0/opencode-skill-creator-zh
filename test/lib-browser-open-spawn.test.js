@@ -16,6 +16,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { mock, test } from "node:test";
 
+import { MOCK_EXPORTS_KEY } from "./helpers/mock-module.js";
+
 /** 记录到的 spawn 调用。 */
 const spawnCalls = [];
 
@@ -23,7 +25,7 @@ const spawnCalls = [];
 const pendingProcs = [];
 
 mock.module("node:child_process", {
-  exports: {
+  [MOCK_EXPORTS_KEY]: {
     spawn: (command, args) => {
       spawnCalls.push({ command, args });
       const proc = new EventEmitter();

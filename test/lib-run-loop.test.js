@@ -9,6 +9,8 @@
 import assert from "node:assert/strict";
 import { mock, test } from "node:test";
 
+import { MOCK_EXPORTS_KEY } from "./helpers/mock-module.js";
+
 /**
  * 构造一条聚合后的评测结果条目（默认：应触发、0 触发、未通过）。
  *
@@ -39,7 +41,7 @@ test("runLoop 用训练集结果推导告警，并对两侧重复的告警只打
   const improveTargets = [];
 
   mock.module("../dist/lib/utils.js", {
-    exports: {
+    [MOCK_EXPORTS_KEY]: {
       parseSkillMd: () => ({
         name: "warning-skill",
         description: "original description",
@@ -49,7 +51,7 @@ test("runLoop 用训练集结果推导告警，并对两侧重复的告警只打
   });
 
   mock.module("../dist/lib/run-eval.js", {
-    exports: {
+    [MOCK_EXPORTS_KEY]: {
       abortError: (message = "aborted") => {
         const error = new Error(message);
         error.name = "AbortError";
@@ -89,7 +91,7 @@ test("runLoop 用训练集结果推导告警，并对两侧重复的告警只打
   });
 
   mock.module("../dist/lib/improve-description.js", {
-    exports: {
+    [MOCK_EXPORTS_KEY]: {
       improveDescription: (opts) => {
         improveCalls.push({ evalResults: opts.evalResults });
         improveTargets.push({
@@ -102,7 +104,7 @@ test("runLoop 用训练集结果推导告警，并对两侧重复的告警只打
   });
 
   mock.module("../dist/lib/report.js", {
-    exports: { generateHtml: () => "<html></html>" },
+    [MOCK_EXPORTS_KEY]: { generateHtml: () => "<html></html>" },
   });
 
   const evalSet = [

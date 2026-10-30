@@ -8,6 +8,8 @@
 import assert from "node:assert/strict";
 import { mock, test } from "node:test";
 
+import { MOCK_EXPORTS_KEY } from "./helpers/mock-module.js";
+
 /**
  * 构造一条聚合后的评测结果条目（默认：应触发、0 触发、未通过）。
  *
@@ -34,7 +36,7 @@ const evalResult = (query, overrides = {}) => ({
  */
 test("runLoop 按评测集位置切分训练/测试，即使同一 query 跨边界重复", async () => {
   mock.module("../dist/lib/utils.js", {
-    exports: {
+    [MOCK_EXPORTS_KEY]: {
       parseSkillMd: () => ({
         name: "split-skill",
         description: "original description",
@@ -45,7 +47,7 @@ test("runLoop 按评测集位置切分训练/测试，即使同一 query 跨边�
 
   // 契约对齐：每条评测集条目一条结果、按评测集顺序返回。
   mock.module("../dist/lib/run-eval.js", {
-    exports: {
+    [MOCK_EXPORTS_KEY]: {
       abortError: (message = "aborted") => {
         const error = new Error(message);
         error.name = "AbortError";
@@ -71,11 +73,11 @@ test("runLoop 按评测集位置切分训练/测试，即使同一 query 跨边�
   });
 
   mock.module("../dist/lib/improve-description.js", {
-    exports: { improveDescription: () => "improved description" },
+    [MOCK_EXPORTS_KEY]: { improveDescription: () => "improved description" },
   });
 
   mock.module("../dist/lib/report.js", {
-    exports: { generateHtml: () => "<html></html>" },
+    [MOCK_EXPORTS_KEY]: { generateHtml: () => "<html></html>" },
   });
 
   const evalSet = [

@@ -20,7 +20,7 @@
 
 - **内容**：
   - `package.json`：包名 `@xiaoqiong0v0/opencode-skill-creator-zh`、版本 `0.1.0`、`type: module`、`main` 指向 `dist/index.js`、`files: ["dist","skill","templates","README.md"]`（`templates` 于 B3 补入，`new` 运行必需）、`engines.node >= 22.3`（`test` 用 `--experimental-test-module-mocks`）、license `Apache-2.0`。
-  - 脚本：`prebuild` 清 `dist/`；`build` = `npm run typecheck && tsc`；`typecheck` = `tsc --noEmit`；`test` = `node --test`（自动发现用例，不传 glob）；`prepack` = `npm test`（`test` 已含 build，不重复构建）。
+  - 脚本：`prebuild` 清 `dist/`；`build` = `npm run typecheck && tsc`；`typecheck` = `tsc --noEmit`；`test` = `node --test --experimental-test-module-mocks "test/*.test.js"`（**显式 glob**：只跑 `*.test.js`，避免 `test/helpers/**` 被 Node 的默认发现规则当作无断言用例计入总数）；`prepack` = `npm test`（`test` 已含 build，不重复构建）。
   - `tsconfig.json`：`module`/`moduleResolution` = `NodeNext`、`target` 与 Node ≥22.3 匹配、`strict` 打开、`declaration: false`、`outDir: dist`、`include` 只覆盖 `src/`（`test/` 为纯 JS，由 `node --test` 执行，不进 tsc；口径见 [CONVENTIONS.md](CONVENTIONS.md)）。
   - 目录骨架：`src/`、`src/lib/`、`src/cli/`、`test/`、`scripts/`、`templates/`（`src/` 内先只放占位导出，保证 `build` 可跑）。
   - 根 `LICENSE`：已就位（Apache-2.0，与 `.tmp/old/LICENSE` 逐字节一致），本批只核对存在、不重写。

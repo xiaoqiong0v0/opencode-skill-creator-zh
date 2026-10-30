@@ -21,6 +21,8 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { mock, test } from "node:test";
 
+import { MOCK_EXPORTS_KEY } from "./helpers/mock-module.js";
+
 /** 临时提示词文件名：`skill-creator-` + 12 位十六进制 + `.md`。 */
 const TEMP_PROMPT_NAME_RE = /^skill-creator-[0-9a-f]{12}\.md$/;
 
@@ -92,7 +94,7 @@ const improveOptions = (evalResults, overrides = {}) => ({
 // 用假 runProcess 替换进程边界，其余导出保持真实实现。
 const realProcess = await import("../dist/lib/process.js");
 mock.module("../dist/lib/process.js", {
-  exports: {
+  [MOCK_EXPORTS_KEY]: {
     ...realProcess,
     runProcess: async (command, opts) => {
       const fileIndex = command.indexOf("--file");

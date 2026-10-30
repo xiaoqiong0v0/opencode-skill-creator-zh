@@ -89,7 +89,8 @@ import { dispatch } from "./cli/dispatch.js"
 
 ## 7. 测试
 
-- 位置 `test/`，文件名 `<主题>.test.js`，用 Node 内置 `node --test --experimental-test-module-mocks`（`mock.module` 需要该开关，最低 Node 22.3），不引第三方框架。
+- 位置 `test/`，文件名 `<主题>.test.js`，用 Node 内置 `node --test --experimental-test-module-mocks "test/*.test.js"`（`mock.module` 需要该开关，最低 Node 22.3；**显式 glob 不可省**——Node 默认把 `test/**` 下所有 `.js` 都当用例，`test/helpers/**` 会虚增用例数），不引第三方框架。
+- **`mock.module` 的导出键按 Node 主版本选**：22 认 `namedExports`、24 认 `exports`（且弃用 `namedExports`）；传错键在 22 上被**静默忽略**（mock 变空模块 →「does not provide an export named …」）。统一用 `test/helpers/mock-module.js` 的 `MOCK_EXPORTS_KEY`。
 - 测试跑**编译产物**（`dist/`）或对同构 JS 直接 `import`；不在测试里手写一份实现来「自证」。
 - 必测项（对应 SPEC）：注册点计数、`HELP_TEXT` 覆盖度、description 长度、4 类失败（未知子命令 / 缺参 / 路径不存在 / 非法参数值）的三段式、子命令主路径。
 - **不写假测试**：不改断言迁就实现，不跳过失败用例；修不了就留红并报出。

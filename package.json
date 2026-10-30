@@ -14,7 +14,7 @@
     "prebuild": "node scripts/clean-dist.mjs",
     "build": "npm run typecheck && tsc",
     "typecheck": "tsc --noEmit",
-    "test": "npm run build && node --test --experimental-test-module-mocks",
+    "test": "npm run build && node --test --experimental-test-module-mocks \"test/*.test.js\"",
     "prepack": "npm test"
   },
   "keywords": [
